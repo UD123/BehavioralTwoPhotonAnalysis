@@ -1,0 +1,106 @@
+% This file describes Data Status:
+% To run training in JAABA:
+% 1. setuppath
+% 2. StartJAABA
+
+% Versions
+% ==================================================
+% JVer 	TPVer 	Date  		Who 	What
+% ==================================================
+% 
+% Set : \D10\8_6_14
+% 0100 	19.20 	20.01.15	UD  	1. Training Lift,Grab.Atmouth,Miss.
+% 0100 	19.20 	13.01.15	UD  	1. Adding Image and behaviour. Checking JAABA features.
+% 0100 	19.16 	30.12.14	UD  	1. Multi Stack Image Data only.
+%
+% =================================================
+% Set : \D16a\7_30_14
+% 0100 	19.20 	03.02.15	UD  	1. Fixing and Training Lift,Grab, Atmouth, Search
+% 0100 	19.20 	13.01.15	UD  	1. Training Lift,Grab, Atmouth, Search 
+% 0100 	19.09 	06.01.15	UD  	1. Feature extraction copy to HD. Running setUpDir - ?. 
+
+% Set : \D16a\8_5_14
+% 0100 	19.14 	18.11.14	UD  	2. Training Table,Lift,Grab, Atmouth - Done.
+% 0100 	19.09 	11.11.14	UD  	1. Feature extraction copy to HD. Running - OK. 
+%
+% Set : \D16a\7_5_14
+% 0100 	19.13 	11.11.14	UD  	1. Training on Table,Lift,Grab, Atmouth (jab in Analysis).
+% 0100 	19.09 	11.11.14	UD  	1. Feature extraction copy to HD - all OK.
+%
+% =================================================
+% Set : \D8\6_28_14
+% 0100 	19.16 	24.12.14	UD  	1. Training Lift,Grab,Atmouth,Search. 
+% 0100 	19.16 	23.12.14	UD  	1. Copy video files from 1 - 40. 
+%
+% Set : \D8\8_1_14
+% 0100 	19.14 	25.11.14	UD  	3. Creating dedicated classifier Table,Lift,Grab, Atmouth, Miss and re-training.
+% 0100 	19.14 	25.11.14	UD  	2. Checking classifier 6_21_14 on this data. Bad predictions.
+% 0100 	19.14 	25.11.14	UD  	1. Copy from Jackie - features are ready. 
+% 
+% Set : \D8\6_21_14
+% 0100 	19.09 	11.11.14	UD  	3. Training on Table,Lift,Grab, Atmouth (jab in Analysis). 
+% 0100 	19.09 	04.11.14	UD  	2. Created feature set. 
+% 0100 	19.09 	21.10.14	UD  	1. Copy TPA files from Jackie from 41 to 60. 
+
+% =================================================
+% Set : \D23\7_11_14\
+% 0100 	19.09 	21.10.14	UD  	1. Copy TPA files from Jackie from 1 to 25. 
+%
+% Set : \D23\8_1_14\
+% 0100 	19.09 	21.10.14	UD  	1. Copy TPA files from Jackie from 13 to 30. 
+%
+% Set : \D23\8_4_14\
+% 0100 	19.09 	21.10.14	UD  	1. Copy TPA files from Jackie from 1 to 20. 
+%
+% Set : \D23\8_7_14\
+% 0100 	19.09 	21.10.14	UD  	1. Copy TPA files from Jackie from 1 to 15. 
+
+%
+% =================================================
+% Set : \D119\7_4_14\
+% 0100 	19.09 	21.10.14	UD  	1. Copy 16 TPA files from Jackie. 
+%
+% =================================================
+% Set : \D29\7_31_14\
+% 0100 	19.09 	21.10.14	UD  	1. Copy 20 TPA files from Jackie. 
+%
+% =================================================
+% Set : \D25\8_2_14\
+% 0100 	19.11 	21.10.14	UD  testing JAABA file 8_5_14_Liftd25_Grabd25_Atmouthd25_02 from set D25\8_5_14 on this data.
+% 								Some feature is missing. Saving new experiment list to 8_2_14_Liftd25_Grabd25_Atmouthd25_02
+% 								Regenerating features :  genAllFeatures('C:\LabUsers\Uri\Data\Janelia\Videos\D25\8_2_14','doforce',false,'frontside',true);
+% 0100 	19.09 	14.10.14	UD  testing JAB file from set D25\8_5_14 on this data. 
+% 								2. Can not open them
+%
+% =================================================
+% Set : \D25\8_5_14\
+% 0100 	19.11 	21.10.14	UD  trying to improve performance events Lift,Grab, Atmouth.
+% 								Creating JAABA files  8_5_14_Liftd25_Grabd25_Atmouthd25_02
+% 0100 	19.09 	14.10.14	UD  training on 3 events Lift,Grab, Atmouth. 
+%
+=================================================
+% Set : \D25\7_14_14\
+% 0100 	19.09 	21.10.14	UD  1. Copy 12 TPA files from Jackie. 
+
+=================================================
+% Set : \D12\6_21_14\
+% 0100 	19.09 	21.10.14	UD  1. Copy from  41 to 91 TPA files from Jackie. 
+%
+% Set : \D12\7_20_14\
+% 0100 	19.09 	21.10.14	UD  1. Copy 20 TPA files from Jackie. 
+%
+% Set : \D12\07_18_14\
+% 0100 	19.12 	21.10.14	UD  1. Adding 16 TPA files
+% 0100 	19.07 	07.10.14	UD  1. Basler_18_07_2014_d12_055 == missing Feature files. (excluding this experiment)
+% 0100 	19.07 	07.10.14	UD  2. Movie 5 Grab has missed frames, also sync problem, may confuse classifier. Removed from the list.
+%
+% Set : \D12\6_26_14\
+% 0100 	19.09 	21.10.14	UD  	Copy 15 TPA files from Jackie.
+% 0100 	19.07 	14.10.14	UD 		Trainig D12. Classifier Lift,Grab,Atmouth.
+% 									Somehow Basler 12,30,61 does not have features. Removing from the list.
+% 0100 	19.07 	07.10.14	UD 		Features exists upto Basler ..12 Starting feature extraction 
+%
+% =================================================
+% Set : \m2\4_4_14\
+% 0100 	19.09 	14.10.14	UD  1. Import event files from janelia. 
+

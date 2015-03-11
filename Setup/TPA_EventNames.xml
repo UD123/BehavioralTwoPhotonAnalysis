@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<S>
+    <None>1</None>
+    <Grab>2</Grab>
+    <Chew>3</Chew>
+    <GrabMiss>4</GrabMiss>
+    <AtArm>5</AtArm>   
+    <Sniff>6</Sniff> 
+    <ArmTouch>7</ArmTouch>    
+    <AtArm>8</AtArm> 
+    <AtMouth>9</AtMouth> 
+    <BothArm>10</BothArm>    
+    <HandOpen>11</HandOpen>
+    <Lift>12</Lift>     
+    <Sup>13</Sup>
+    <Tone>14</Tone>
+    <Table>15</Table>
+</S>
