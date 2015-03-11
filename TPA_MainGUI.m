@@ -84,7 +84,7 @@ function TPA_MainGUI
 %clear all;
 
 % version
-currVers    = '19.24';
+currVers    = '20.02';
 
 % connect
 addpath(genpath('.'));
@@ -902,8 +902,8 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 end;
                 try
                 userDataFileName    = fullfile(sPath,csFilenames);
-                load(userDataFileName,'StrEvent');
-                SData.strEvent       = StrEvent;
+                load(userDataFileName,'strEvent');
+                SData.strEvent       = strEvent;
                 catch ex
                         errordlg(ex.getReport('basic'),'File Type Error','modal');
                 end
@@ -1063,6 +1063,32 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 objTrack            = ShowLinkage(objTrack, false);
                 
             case 24,
+                
+                
+            case 31, % analysis of events - Time Diff
+                
+                % test init behavior
+                if Par.DMB.VideoSideFileNum < 1 ,
+                    warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
+                    return
+                end;
+                
+                % close all figures - will prevent event data sync problem
+                %fCloseFigures();
+                
+                % determine if we have current event info
+                if length(SData.strEvent) < 1,
+                    [Par.DMB,SData.strEvent]   = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
+                    [Par.DMB, SData.imBehaive] = Par.DMB.LoadBehaviorData(Par.DMB.Trial,'side');
+                else
+                   % Par.DMB                    = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'StrEvent',SData.strEvent);
+                end
+                
+                [Par,SData.strEvent] = TPA_AnalysisEvents(Par,SData.strEvent,Par.FigNum + 11);
+                Par.DMB              = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'strEvent',SData.strEvent);
+                
+            case 32,
+            case 33,
         end;
         
         
@@ -1715,6 +1741,13 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 
                 Par                     = TPA_MultiTrialEventAssignment(Par);
                     
+            case 23, % Process all motion info in all trials
+                
+                Par                     = TPA_MultiTrialEventProcess(Par);
+                
+            case 24, % Process all motion in trajectory
+                
+                warndlg('Is yet to come')
                 
              otherwise
                 errordlg('Unsupported Option')
@@ -2394,6 +2427,11 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         S.hMenuEventsBD(3)      = uimenu(S.hMenuEventsBD(1),    'Label','New/Clean  ...',                           'Callback',{@fManageEvent,2});
         S.hMenuEventsBD(4)      = uimenu(S.hMenuEventsBD(1),    'Label','Save ...',                                 'Callback',{@fManageEvent,3});
         S.hMenuEventsBD(5)      = uimenu(S.hMenuEventsBD(1),    'Label','Load...',                                  'Callback',{@fManageEvent,4});
+        S.hMenuAnalEvent(1)     = uimenu(S.hMenuBehaive(1),     'Label','Analysis...');
+        S.hMenuAnalEvent(2)     = uimenu(S.hMenuAnalEvent(1),   'Label','Abs Time Difference per ROI...',           'Callback',{@fManageEvent,31});
+        S.hMenuAnalEvent(3)     = uimenu(S.hMenuAnalEvent(1),   'Label','Background Difference per ROI ...',        'Callback',{@fManageEvent,32});
+        S.hMenuAnalEvent(4)     = uimenu(S.hMenuAnalEvent(1),   'Label','Optical Flow Trajectory per ROI ...',     'Callback',{@fManageEvent,33});
+        
         %S.hMenuEvents(6)        = uimenu(S.hMenuEvents(1),      'Label','View All...',                              'Callback',{@fManageEvent,5});
         %S.hMenuEvents(7)        = uimenu(S.hMenuEvents(1),      'Label','Auto Detect...',                           'Callback','warndlg(''Is yet to come'')');
         %S.hMenuBehaive(8)       = uimenu(S.hMenuBehaive(1),     'Label','Save Event Results',  'separator','on',    'Callback',{@fManageBehavior,5});
@@ -2465,22 +2503,25 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         S.hMenuMulti(1)          = uimenu(S.hFig,               'Label','Multi Trial...');
         S.hMenuMulti(2)          = uimenu(S.hMenuMulti(1),      'Label','Batch TwoPhoton Registration for all Trials ... ', 'Callback',{@fMultipleTrials,1});
         S.hMenuMulti(3)          = uimenu(S.hMenuMulti(1),      'Label','Batch ROI Assignment ... ',                        'Callback',{@fMultipleTrials,2});
-        S.hMenuMultiDFF(1)       = uimenu(S.hMenuMulti(1),      'Label','Batch dF/ ... '                        );
+        S.hMenuMultiDFF(1)       = uimenu(S.hMenuMulti(1),      'Label','Batch ROI Processing ... '                        );
         S.hMenuMultiDFF(2)       = uimenu(S.hMenuMultiDFF(1),   'Label','Batch dF/F all Trials : Fbl = Aver ... ',          'Callback',{@fMultipleTrials,13});
         S.hMenuMultiDFF(3)       = uimenu(S.hMenuMultiDFF(1),   'Label','Batch dF/F all Trials : Fbl = 10% Min... ',        'Callback',{@fMultipleTrials,14});
         S.hMenuMultiDFF(4)       = uimenu(S.hMenuMultiDFF(1),   'Label','Batch dF/F all Trials : Fbl = 10% Min Cont ... ',  'Callback',{@fMultipleTrials,15});
-        S.hMenuMulti(4)          = uimenu(S.hMenuMulti(1),      'Label','Preview all Trials .... ',                         'Callback',{@fMultipleTrials,4});
-        S.hMenuMulti(5)          = uimenu(S.hMenuMulti(1),      'Label','Multi Trial Explorer ...',                         'Callback',{@fMultipleTrials,5});
-        S.hMenuMulti(6)          = uimenu(S.hMenuMulti(1),      'Label','Multi Trial Explorer from JAABA Excel ...',        'Callback',{@fMultipleTrials,6});
-        S.hMenuMulti(7)         = uimenu(S.hMenuMulti(1),       'Label','Active Roi per Event Analysis...',                 'Callback',{@fMultipleGroups,11});
-        S.hMenuMulti(8)         = uimenu(S.hMenuMulti(1),       'Label','Early/Late Roi per Event Analysis...',             'Callback',{@fMultipleGroups,12});
-        S.hMenuMulti(9)          = uimenu(S.hMenuMulti(1),      'Label','dF/F Spike Delay Map for all ROIs     ...',        'Callback',{@fMultipleGroups,13});
+        S.hMenuMulti(4)          = uimenu(S.hMenuMulti(1),      'Label','Batch Event Assignment. ...',   'separator','on' , 'Callback',{@fMultipleTrials,22});
+        S.hMenuMultiEvent(1)     = uimenu(S.hMenuMulti(1),      'Label','Batch Event Processing ... '                      );
+        S.hMenuMultiEvent(2)     = uimenu(S.hMenuMultiEvent(1), 'Label','Abs Time Difference ... ',                         'Callback',{@fMultipleTrials,23});
+        S.hMenuMultiEvent(3)     = uimenu(S.hMenuMultiEvent(1), 'Label','Optical Flow Trajectory ... ',                     'Callback',{@fMultipleTrials,24});
+        S.hMenuMulti(5)          = uimenu(S.hMenuMulti(1),      'Label','Preview all Trials .... ',                         'Callback',{@fMultipleTrials,4});
+        S.hMenuMulti(6)          = uimenu(S.hMenuMulti(1),      'Label','Multi Trial Explorer ...',                         'Callback',{@fMultipleTrials,5});
+        S.hMenuMulti(7)          = uimenu(S.hMenuMulti(1),      'Label','Multi Trial Explorer from JAABA Excel ...',        'Callback',{@fMultipleTrials,6},'Enable','off');
+        S.hMenuMulti(8)         = uimenu(S.hMenuMulti(1),       'Label','Active Roi per Event Analysis...',                 'Callback',{@fMultipleGroups,11});
+        S.hMenuMulti(9)         = uimenu(S.hMenuMulti(1),       'Label','Early/Late Roi per Event Analysis...',             'Callback',{@fMultipleGroups,12});
+        S.hMenuMulti(10)          = uimenu(S.hMenuMulti(1),      'Label','dF/F Spike Delay Map for all ROIs     ...',        'Callback',{@fMultipleGroups,13});
 %         S.hMenuMulti(10)         = uimenu(S.hMenuMulti(1),      'Label','Export Data...',                           'Callback',{@fMultipleTrials,7});
         S.hMenuDetect(1)         = uimenu(S.hMenuMulti(1),      'Label','Batch dF/F Event Detection...');
         S.hMenuDetect(2)         = uimenu(S.hMenuDetect(1),     'Label','Configure ...',                                    'Callback',{@fTwoPhotonDetection,1});
         S.hMenuDetect(2)         = uimenu(S.hMenuDetect(1),     'Label','Detect Events on ROI data ...',                    'Callback',{@fTwoPhotonDetection,2});
-        S.hMenuMulti(11)         = uimenu(S.hMenuMulti(1),      'Label','Batch Behavior Compress. ...', 'separator','on',   'Callback',{@fMultipleTrials,21});
-        S.hMenuMulti(12)         = uimenu(S.hMenuMulti(1),      'Label','Batch Event Assignment. ...',                      'Callback',{@fMultipleTrials,22});
+        S.hMenuMulti(12)         = uimenu(S.hMenuMulti(1),      'Label','Batch Behavior Compress. ...', 'separator','on',   'Callback',{@fMultipleTrials,21});
          
         S.hMenuGroups(1)        = uimenu(S.hFig,                  'Label','Muti Experiment...');
         S.hMenuGroups(2)        = uimenu(S.hMenuGroups(1),       'Label','Multi Group Explorer. .....',          'Callback',{@fMultipleGroups,1});

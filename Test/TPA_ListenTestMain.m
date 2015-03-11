@@ -8,7 +8,7 @@ function TPA_ListenTestMain
 
 hMainGui   = figure('Pos', [400 400 300 100]);
 %graph=axes('parent',hMainGui, 'units', 'pixel','pos',[30 50 250 220]);
-lbl1 =uicontrol(hMainGui,'style', 'text', 'pos',[0 0 100 20]);
+lbl1 = uicontrol(hMainGui,'style', 'text', 'pos',[0 0 100 20]);
 set(hMainGui,'CloseRequestFcn', {@fCloseRequestFcn});
 
 set(hMainGui,'Name',sprintf('Main'));

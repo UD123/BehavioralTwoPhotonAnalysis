@@ -152,37 +152,3 @@ return
 
 
 
-for k = 1:numROI,
-    %subplot(numROI,1,k),
-    figure(FigNum + k),set(gcf,'Tag','AnalysisROI'),clf;
-    %imagesc(strROI{k}.meanROI,Par.DataRange), colorbar;
-    imagesc(StrROI{k}.meanROI,Par.DataRange), colorbar;
-    title(sprintf('Ch. %d, F. Mean %s',chanInd,StrROI{k}.name), 'interpreter','none'),
-    ylabel('Line Pix'),xlabel('Frame Num')
-end;
-%title(sprintf(' Chan-%d :Z-%d : Mean Energy of ROI per Time : %d',ChanNum,ZStackInd));
-%end;
-
-
-figure(FigNum+numROI+1),set(gcf,'Tag','AnalysisROI'),clf;
-meanProject         = squeeze(mean(mean(ImStack,4),3));
-imagesc(meanProject,Par.DataRange), colorbar; colormap(gray);
-hold on
-roiNames = cell(2*numROI,1);
-for k = 1:numROI,
-    %subplot(numROI,1,k),
-        
-    plot(StrROI{k}.xy(:,1),StrROI{k}.xy(:,2),'color',StrROI{k}.color);
-    [rLine,cLine] = ind2sub([nR,nC],StrROI{k}.lineInd);
-    plot(cLine,rLine,'color',StrROI{k}.color,'LineWidth',2);
-    roiNames{2*k -1} = sprintf('Border : %s',StrROI{k}.name);
-    roiNames{2*k}    = sprintf('Center : %s',StrROI{k}.name);
-
-end;
-hold off
-legend(roiNames,'interpreter','none')
-title(sprintf(' F. Mean Projection with ROIs : Z = %d',zInd),'interpreter','none');
-
-return
-
-

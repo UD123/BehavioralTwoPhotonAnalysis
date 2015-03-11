@@ -1,6 +1,6 @@
 
 classdef TPA_RoiManagerClass %< handle
-    % TPA_RoiManager - defines Last ROI management class
+    % TPA_RoiManagerClass - defines Last ROI management class
     % Inputs:
     %       global variables and more
     % Outputs:
@@ -9,59 +9,12 @@ classdef TPA_RoiManagerClass %< handle
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 20.00 26.02.15 UD     Rebuilding
     % 16.10 21.02.14 UD     Improving
     % 16.06 17.02.14 UD     Created
     %-----------------------------
-    
-    properties
-        % Selected ROI properties
-        % init common ROI structure
-        Type     = 0;               % define ROI type
-        State    = 0;               % designates in which init state ROI is in
-        Color    = rand(1,3);       % generate colors
-        Name     = 'X';             % which name
-        AverType = 0;               % which operation to perform
-        
-        % bounding box
-        xInd     = [1 1];           % range location in X
-        yInd     = [1 1];           % range location in Y
-        zInd     = [1 1];           % range location in Z stack
-        tInd     = [1 1];           % rangelocation in T stack
-        
-        % init graphics
-        %ViewType = 0;               % which type default
-        NameShow = false;           % manage show name
-        ViewXY   = [];             % structure contains XY shape params
-        ViewYT   = [];             % structure contains YT shape params
-        
-        % clicks position
-        pointRef                    = [10 10];  % point1        
-        rectangleInitialPosition    = [-1 -1 -1 -1]; %rectangle to move
-        shapeInitialDrawing         = [0 0]; % coordinates of the shape
-
-
-        
-        % internal stuff
-        cntxMenu        = [];  % handle that will contain context menu
-        
-        
-        %Testing
-        hFigure             = [];
-        hAxes               = [];
-        hImage              = [];
-                    
-        
-        
-    end
-    
-    properties (SetAccess = private)
-        % global constants see Par file
-        GUI_STATES          = [];
-        BUTTON_TYPES        = [];
-        ROI_TYPES           = [];
-        IMAGE_TYPES         = [];
-        ROI_AVERAGE_TYPES        = [];
-        VIEW_TYPES          = [];
+       
+    properties (Constant)
         
         % constants : just do not want to define another file
         ROI_STATE_NONE       = 1; % designates states of lastROI first time init
@@ -69,6 +22,49 @@ classdef TPA_RoiManagerClass %< handle
         ROI_STATE_VIEWXY     = 3;% lastROI assigned to view xy
         ROI_STATE_VIEWYT     = 4;% lastROI assigned to view yt
         ROI_STATE_VIEWALL    = 5;% lastROI all views are init
+    end
+
+    properties
+        % Selected ROI properties
+        % init common ROI structure
+        Type                = 0;               % define ROI type
+        State               = 0;               % designates in which init state ROI is in
+        Color               = rand(1,3);       % generate colors
+        Name                = 'X';             % which name
+        AverType            = 0;               % which operation to perform
+        CellPart            = 1;
+        CountId             = 1;               % TBD
+        
+        % bounding box
+        xInd                = 1;           % range location in X
+        yInd                = 1;           % range location in Y
+        zInd                = 1;           % range location in Z stack
+        tInd                = 1;           % range location in T stack
+        
+        % init graphics
+        %ViewType = 0;               % which type default
+        NameShow            = false;           % manage show name
+        ViewXY              = [];             % structure contains XY shape params
+        ViewYT              = [];             % structure contains YT shape params
+        
+        % clicks position
+        %Position                    = [0 0 1 1];   % position in Matlab notation
+        pointRef                    = [10 10];  % point1        
+        rectangleInitialPosition    = [-1 -1 -1 -1]; %rectangle to move
+        shapeInitialDrawing         = [0 0]; % coordinates of the shape
+
+        % internal stuff
+        cntxMenu            = [];  % handle that will contain context menu
+        
+        %Testing
+        hFigure             = [];
+        hAxes               = [];
+        hImage              = [];
+                    
+        
+    end
+    
+    properties (SetAccess = private)
     end
     
     methods
@@ -83,20 +79,13 @@ classdef TPA_RoiManagerClass %< handle
         end
         
         % =============================================
-        function obj = TPA_ParInit(obj,Par)
+        function obj = ParInit(obj)
             % Constructor
             
-            if nargin < 2, error('Requires Par structure'); end
-            %global Par
+            %if nargin < 2, error('Requires Par structure'); end
+            global Par
+            if isempty(Par), error('Par must be initialized'); end;
             
-            % init types internally
-            obj.GUI_STATES          = Par.GUI_STATES;
-            obj.BUTTON_TYPES        = Par.BUTTON_TYPES;
-            obj.ROI_TYPES           = Par.ROI_TYPES;
-            obj.IMAGE_TYPES         = Par.IMAGE_TYPES;
-            obj.ROI_AVERAGE_TYPES        = Par.ROI_AVERAGE_TYPES;
-            obj.VIEW_TYPES          = Par.VIEW_TYPES;
-
             % state of the ROI
             obj.State               = obj.ROI_STATE_NONE;
             
@@ -104,6 +93,12 @@ classdef TPA_RoiManagerClass %< handle
             obj.AverType            = Par.ROI_AVERAGE_TYPES.MEAN;     % which operation to perform
             obj.Color               = rand(1,3);       % generate colors
             obj.Name                = 'X';             % which name
+            obj.CellPart            = Par.ROI_CELLPART_TYPES.ROI;
+            obj.CountId             = 1;               % TBD
+            
+            
+            % add context menu
+            obj                     = fCreateRoiContextMenu(obj);
             
         end
         
@@ -122,12 +117,17 @@ classdef TPA_RoiManagerClass %< handle
             if nargin < 3, viewType     = obj.VIEW_TYPES.XY;   end;
             if nargin < 4, hAxes        = [];   end;
             
+            global Par
+            if isempty(Par), error('Par must be initialized'); end;
+            
             % check
             if isempty(hAxes) || ~ishandle(hAxes)
                 error('hAxes must be a valid handle')
             else
                 axes(hAxes); % attention
             end
+            
+
             
             % in the fisrt time init
             if obj.State == obj.ROI_STATE_NONE,
@@ -163,8 +163,8 @@ classdef TPA_RoiManagerClass %< handle
                         obj.State    = obj.ROI_STATE_VIEWXY;
                     end
                 case Par.VIEW_TYPES.YT,
-                    obj.Type   = Par.ROI_TYPES.RECT;            % define ROI type
-                    obj.ViewYT = InitShape(obj,0);
+                    obj.Type        = Par.ROI_TYPES.RECT;            % define ROI type
+                    obj.ViewYT      = InitShape(obj,0);
                     % state
                     if obj.State == obj.ROI_STATE_VIEWXY,
                         obj.State    = obj.ROI_STATE_VIEWALL;
@@ -351,7 +351,7 @@ classdef TPA_RoiManagerClass %< handle
                 obj.Color           = clr;   % remember
                 set(obj.ViewXY.hShape,     'Color',    clr);
                 set(obj.ViewXY.hBoundBox,  'edgeColor',clr);
-                set(obj.ViewXY.hCornRect,  'Color',clr);
+                set(obj.ViewXY.hCornRect,  'Color',    clr);
                 set(obj.ViewXY.hText,      'color',    clr);
             end;
             
@@ -360,7 +360,7 @@ classdef TPA_RoiManagerClass %< handle
                 obj.Color           = clr;   % remember
                 set(obj.ViewYT.hShape,     'Color',    clr);
                 set(obj.ViewYT.hBoundBox,  'edgeColor',clr);
-                set(obj.ViewYT.hCornRect,  'Color',clr);
+                set(obj.ViewYT.hCornRect,  'Color',    clr);
                 set(obj.ViewYT.hText,      'color',    clr);
             end;
         end
@@ -373,17 +373,96 @@ classdef TPA_RoiManagerClass %< handle
             set(obj.hText,  'string', obj.Name,   'visible','on')
         end
         
+        % =============================================
+        function obj = SetAverType(obj, Data)
+            % set roi averaging type
+            obj.AverType        = Data;
+        end
         
-        %              case 'setAverType',
-        %                 % properties for the subsequent processing
-        %                 roiLast.AverType        = Data;   % remember
-        %
-        %             case 'setZInd',
-        %                 % stack position
-        %                 roiLast.zInd            = Data;
-        %
-        %             case 'setTInd',
-        %                roiLast.tInd             = Data;           % location in T stack
+        % =============================================
+        function obj = SetCellPartType(obj, Data)
+            % set Cell Name
+            obj.CellPart        = Data;
+        end
+        % =============================================
+        function obj = SetZInd(obj, Data)
+            % set z index
+            obj.zInd        = Data;
+        end
+        % =============================================
+        function obj = SetTInd(obj, Data)
+            % set z index
+            obj.tInd        = Data;
+        end
+        % =============================================
+        function obj = SaveInitRef(obj, Data)
+        % remember ref position        
+            % help varibles
+            obj.rectangleInitialPosition    = Data; %RoiLast.Position;
+            obj.shapeInitialDrawing         = [get(obj.ViewXY.hShape,'xdata')' get(obj.ViewXY.hShape,'ydata')']; 
+        end
+
+        % =============================================
+        function [obj,initFail] = ImportRoi(obj, strROI)
+        % init ROI from outside structure        
+            % check the XY size only if less than 7x7 pix - kill
+            if nargin < 2, error('strROI required'); end;
+            
+            global Par
+            thisRoiAreaOK                 = true;   
+            thisRoiNeedsInit              = true;
+            initFail                      = false;
+            
+            % support roi types
+            if isfield(strROI,'Type'),
+                thisRoiNeedsInit         = false;
+            end;
+            
+            % support count id
+            if isfield(strROI,'CountId'),
+                obj.CountId  = strROI.CountId;
+            else
+                obj.CountId  = 1;
+            end;
+            
+            currentXY                   = [1 1; 1 3;3 3;3 1; 1 1];
+            if isfield(strROI,'xyInd')
+                currentXY               = strROI.xyInd;
+            else
+                thisRoiAreaOK           = false;
+            end
+            
+            % check area
+            rectArea                    = prod(max(currentXY) - min(currentXY));
+            if rectArea < 10,
+                thisRoiAreaOK             = false;
+            end
+            
+            % check max Id            
+            if thisRoiAreaOK , 
+                
+                if thisRoiNeedsInit,
+                    obj.Type        = Par.ROI_TYPES.ELLIPSE;
+                    obj.CountId     = 1;
+                    obj.ViewXY       = InitShape(obj,currentXY);
+                    obj              = SetName(obj, 'Change My Name');
+%                     fManageLastRoi('initFreehand',currentXY);
+%                     fManageLastRoi('setName',sprintf('ROI:%2d Z:%d',i,activeZstackIndex));
+                else                
+                    obj              = strROI; 
+                    obj.ViewXY       = InitShape(obj,0);
+               end
+                
+                % add to the pool
+                %fManageRoiArray('copyToList',i)
+                
+            else            
+                %fManageRoiArray('delete',i)
+                initFail = true;
+                
+           end
+        end
+        
         
         % =============================================
         function obj = Delete(obj)
@@ -408,6 +487,167 @@ classdef TPA_RoiManagerClass %< handle
             end;
         end
         
+        % =============================================
+        function obj = UpdateView(obj)
+
+                % redraw XY view according to info from YT view
+                
+                % check if YT is initialized
+                if ~isfield(obj.ViewYT,'hBoundBox'), return; end;
+                
+                % extract Y length from YT space
+                posXY                = get(obj.ViewXY.hBoundBox,'pos');
+                posYT                = get(obj.ViewYT.hBoundBox,'pos');
+                
+                % position is defined by 
+                posXY([2 4])         = posYT([2 4]);
+                
+                % redefine the shape
+                obj                  = SetPosition(obj, posXY);
+                % update color to default
+                obj                  = SetColor(obj, obj.Color);
+        end
+
+        % =============================================
+        function obj = CreateView(obj)
+
+                % redraw XY view according to info from YT view
+                if ~isfield(obj.ViewYT,'hBoundBox'), return; end;
+                
+                % extract Y length from YT space
+                posYT                = get(obj.ViewYT.hBoundBox,'pos');
+                
+                % position is defined by 
+                posXY([2 4])         = posYT([2 4]);
+                posXY([1 3])         = [10 nC-20];    
+                
+               switch obj.Type,
+                     case ROI_TYPES.ELLIPSE,
+                        curv           = [1,1]; % curvature
+                    otherwise
+                        curv           = [0,0]; % curvature
+                end;
+                
+                
+                % init shapes
+                pos                  = posXY;
+                xy                   = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];                
+                clr                 = 'y';
+                obj.ViewXY.hShape  =  line('xdata',xy(:,1),'ydata',xy(:,2),...
+                        'lineStyle','--',...
+                        'lineWidth',1, ...
+                        'Color',clr);
+                obj.ViewXY.hBoundBox = rectangle('position',pos,...
+                        'lineStyle',':',...
+                        'lineWidth',0.5, ...
+                        'curvature',curv,...                       
+                        'edgeColor',clr);
+                cornerRectangles = getCornerRectangles(pos);
+                for j=1:8,
+                 obj.ViewXY.hCornRect(j) = rectangle('position',cornerRectangles{j},...
+                        'lineWidth',1, ...
+                        'edgeColor',clr);
+                end
+                obj.ViewXY.hText =  text(pos(1),pos(2),roiLast.Name,'color',roiLast.Color,'interpreter','none');  
+                
+                %  hide it
+                set(obj.ViewXY.hShape,   'visible','off')
+                set(obj.ViewXY.hBoundBox,'visible','off')
+                set(obj.ViewXY.hCornRect,'visible','off')
+                set(obj.ViewXY.hText,    'visible','off')
+                
+                % add context menu
+                 set(obj.ViewXY.hBoundBox,'uicontextmenu',cntxMenu)
+                
+                % redefine the shape
+                obj                  = SetPosition(obj, posXY);
+                % update color to default
+                obj                  = SetColor(obj, obj.Color);
+        
+                
+        end
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+
+        function obj = fCreateRoiContextMenu(obj)
+            % right click menu
+            obj.cntxMenu = uicontextmenu;
+            uimenu(obj.cntxMenu,'Label','Remove ROI',    'Callback',         @fRemoveMarkedRoi);
+            uimenu(obj.cntxMenu,'Label','Select Color',  'Callback',         @fSelectColorForRoi);
+            uimenu(obj.cntxMenu,'Label','Rename',        'Callback',         @fRenameRoi);
+            uimenu(obj.cntxMenu,'Label','Aver Type',     'Callback',         @fAverageTypeRoi);
+            uimenu(obj.cntxMenu,'Label','Cell Part Type','Callback',         @fCellPartTypeRoi);
+            uimenu(obj.cntxMenu,'Label','Show name',     'Callback',         @fShowNameRoi, 'checked', 'off');
+            uimenu(obj.cntxMenu,'Label','Snap to Data',  'Callback',         'warndlg(''TBD'')');
+        end
+
+% 
+%         function fSelectColorForRoi(src,eventdata)
+% 
+%             % activate menu only when active index is OK
+%             if activeRectangleIndex < 1, return; end;
+% 
+%             selectedColor = uisetcolor('Select a Color for the cell');
+%             if(selectedColor == 0),         return;     end
+%             fManageLastRoi('setClr',selectedColor);
+% 
+%         end
+% 
+%         function fRenameRoi(src,eventdata)
+% 
+%             % activate menu only when active index is OK
+%             if activeRectangleIndex < 1, return; end;
+% 
+%             prompt      = {'Enter ROI Name:'};
+%             dlg_title   = 'ROI parameters';
+%             num_lines   = 1;
+%             def         = {roiLast.Name};
+%             answer      = inputdlg(prompt,dlg_title,num_lines,def);
+%             if isempty(answer), return; end;
+%             fManageLastRoi('setName',answer{1});
+% 
+%         end
+% 
+%         function fAverageTypeRoi(src,eventdata)
+% 
+%             % activate menu only when active index is OK
+%             if activeRectangleIndex < 1, return; end;
+% 
+%             RoiAverageOptions = Par.Roi.AverageOptions; %{'PointAver','LineMaxima','LineOrthog'};
+%             [s,ok] = listdlg('PromptString','Select ROI Averaging Type:','ListString',RoiAverageOptions,'SelectionMode','single');
+%             if ~ok, return; end;
+%             fManageLastRoi('setAverType',getfield(Par.ROI_AVERAGE_TYPES,RoiAverageOptions{s}));
+% 
+%         end
+% 
+%         function fCellPartTypeRoi(src,eventdata)
+% 
+%             % activate menu only when active index is OK
+%             if activeRectangleIndex < 1, return; end;
+% 
+%             [s,ok] = listdlg('PromptString','Select ROI Averaging Type:','ListString', Par.Roi.CellPartOptions,'SelectionMode','single');
+%             if ~ok, return; end;
+%             fManageLastRoi('setCellPartType',getfield(Par.ROI_CELLPART_TYPES,Par.Roi.CellPartOptions{s}));
+% 
+%             % update name
+%             roiName                     = sprintf('%s:%2d Z:%d',Par.Roi.CellPartOptions{s},roiLast.CountId,roiLast.zInd);
+%             fManageLastRoi('setName',roiName);
+% 
+% 
+%         end
+% 
+%         function fShowNameRoi(src,eventdata)
+% 
+%             % activate menu only when active index is OK
+%             if activeRectangleIndex < 1, return; end;
+% 
+%             roiLast.NameShow  = strcmp(get(src,'Checked'),'on');
+% 
+%         end
+%         
+        
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -423,7 +663,7 @@ classdef TPA_RoiManagerClass %< handle
             %obj.AddPoint(point2(1,1:2));
             obj = obj.SetPosition( [point2(1,1:2) 20 20]);            
             
-            obj.SetColor('blue');
+            obj.SetColor(rand(1,3));
             
         end
         
@@ -438,8 +678,8 @@ classdef TPA_RoiManagerClass %< handle
             % init ROI
             
             global Par;
-            %Par = TPA_ParInit();
-            %obj = obj.Init(Par.ROI_TYPES.RECT,Par.VIEW_TYPES.XY,obj.hAxes);
+            Par = TPA_ParInit();
+            obj = obj.ParInit();
             obj = obj.Init(Par.ROI_TYPES.FREEHAND,Par.VIEW_TYPES.XY,obj.hAxes);
             obj = obj.SetPosition( [10 10 20 20], Par.VIEW_TYPES.XY);
             obj = obj.SetColor( [0 0 0.5]);

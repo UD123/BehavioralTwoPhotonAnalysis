@@ -11,6 +11,7 @@ function [Par,dbROI,dbEvent] = TPA_MultiTrialShow(Par,FigNum)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 20.01 03.03.15 UD     Using event data 
 % 19.07 03.10.14 UD     If proc data is empty - fix 
 % 19.04 12.08.14 UD     Fixing bug of name comparison
 % 17.08 05.04.14 UD     Support no behavioral data
@@ -96,7 +97,7 @@ for trialInd = 1:validTrialNum,
            dbEvent{dbEventRowCount,1} = trialInd;
            dbEvent{dbEventRowCount,2} = eInd;                   % roi num
            dbEvent{dbEventRowCount,3} = strEvent{eInd}.Name;      % name 
-           dbEvent{dbEventRowCount,4} = strEvent{eInd}.TimeInd;
+           dbEvent{dbEventRowCount,4} = strEvent{eInd}.procROI;
         end
         
 
@@ -151,21 +152,31 @@ for p = 1:size(dbROI,1),
     % show trial with shift
     pos  = trialSkip*(trialCount - 1);
     clr  = rand(1,3);
+    subplot(8,1,[1 6])
     plot(timeTwoPhoton,procROI+pos,'color',clr); hold on;
-    plot(timeTwoPhoton,zeros(frameNum,1) + pos,':','color',[.7 .7 .7]);
+    plot(timeTwoPhoton,zeros(frameNum,1) + pos,':','color',[.7 .7 .7]); %hold off;
+    
+    
+    subplot(8,1,[7 8])
     
     for m = 1:length(eventInd),
-        tt = dbEvent{eventInd(m),4} / timeConvertFact; %/timeConvertFact;
+        ed = dbEvent{eventInd(m),4};
+        tt = 1:size(ed,1); % / timeConvertFact; %/timeConvertFact;
+        tt = tt(1:timeConvertFact:end);
         if isempty(tt),continue; end
-        %plot(tt,-ones(1,2)/2,'*','color',clr);
-        h = rectangle('pos',[tt(1) pos-0.5 diff(tt) 0.1 ])   ;
-        set(h,'FaceColor',clr)
+        plot(tt./timeConvertFact,ed(tt),':','color',clr); hold on;
+%         h = rectangle('pos',[tt(1) pos-0.5 diff(tt) 0.1 ])   ;
+%         set(h,'FaceColor',clr)
     end
+    %hold off
     
 end
-ylabel('Trial Num'),xlabel('Frame Num')
-hold off
-%ylim([-1.5 2])
+subplot(8,1,[1 6])
+ylabel('Trial Num'),hold off;
+subplot(8,1,[7 8])
+ylabel('Event Num'),xlabel('Frame Num'),hold off
+
+subplot(8,1,[1 6])
 title(sprintf('Trials and Events for %s',nameRefROI))
 
 return

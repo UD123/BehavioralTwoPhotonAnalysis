@@ -15,6 +15,7 @@ classdef TPA_DataManagerBehavior
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 20.02 07.03.15 UD     Events are now different and names are changed
     % 19.09 14.10.14 UD     Import Jaaba from external storage support
     % 19.06 21.09.14 UD     Import movie_comb.avi files.   Deal with names and Dir structures
     % 19.05 11.09.14 UD     Dump color info. File size equalization.   
@@ -50,7 +51,7 @@ classdef TPA_DataManagerBehavior
         
         EventFileNum                = 0;                % numer of Analysis mat files
         EventFileNames              = {};               % file names of Analysis mat files
-        EventFilePattern            = 'BDA_*.mat';      % expected name for analysis
+        EventFilePattern            = 'EDA_*.mat';      % expected name for analysis
 
         
 %         % common info
@@ -113,7 +114,7 @@ classdef TPA_DataManagerBehavior
             obj.VideoSideFilePattern        = '*_side_*.avi';   % expected name for video pattern
             obj.EventFileNum                = 0;                % numer of Analysis mat files
             obj.EventFileNames              = {};               % file names of Analysis mat files
-            obj.EventFilePattern            = 'BDA_*.mat';      % expected name for analysis
+            obj.EventFilePattern            = 'EDA_*.mat';      % expected name for analysis
             obj.VideoFileNum               = 0;             % number of trials (avi movies) in Side or Front views
             obj.Trial                      = 0;             % current trial
             obj.ValidTrialNum              = 0;             % summarizes the number of valid trials

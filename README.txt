@@ -1,5 +1,5 @@
 % This Readme file describes version and operation instructions for
-% Two Photon and Behavioral analysis tools.
+% Two Photon and Behavioural analysis tools.
 % 
 % User Manual : 
 %       .\Doc\TwoPhotonAnalysis UserGuide.docx
@@ -14,7 +14,7 @@
 %       2. Image registration - Janelia code originally written by Sun Wenzhi, 8/28/2012 for Image Box SW. 
 %          This code uses algorithms developed by Ann M. Kowalczyk and James R. Fienup in paper
 %          J.R. Fienup and A.M. Kowalczyk, "Phase retrieval for a complex-valued object by using a low-resolution image," J. Opt. Soc. Am. A 7, 450-458, (1990).
-% 	3. For the rest you can blame me Uri Dubin. 
+% 	    3. For the rest you can blame me Uri Dubin. 
 %
 % Compile Piotr Dollar toolbox:
 % 	If you need to use automatic event detection tool you may need to compile Piotr Dollar toolbox
@@ -30,7 +30,10 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Ver 	Date  		Who 	What
 %==================================================
-% 19.24 23.02.15	UD 	Working on trajectory integration. Adding Event management in XY view.
+% 20.02 07.03.15	UD 	Change Event prefix in Analysis folder BDA-EDA.
+% 20.01 03.03.15	UD 	Behavioural Events bug fixing. Removing Doc from backup. 
+% 20.00 26.02.15	UD 	Behavioural Events are objects - not yet. 
+% 19.24 23.02.15	UD 	Working on trajectory integration. 
 % 19.23 17.02.15	UD 	Testing delay view. Integrating trajectories.
 % 19.22 12.02.15	UD 	Creating cell activity delay view.
 % 19.21 20.01.15	UD 	Problems with XLS dir structure to CSV - MAC compatability issues. MultiTrial - adding 2 cursors.

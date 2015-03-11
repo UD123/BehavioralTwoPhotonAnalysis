@@ -21,6 +21,7 @@ function [Par] = TPA_BehaviorEditorYT(Par)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 20.00 28.02.15 UD     fixing bugs roiBeingEdited
 % 19.16 31.12.14 UD     speedup by non computing image transforms again
 % 19.08 07.10.14 UD     SeqNum for event Ronen
 % 19.05 11.09.14 UD     adding randomization on name position. fixing event bugs. adding right point image navigation.
@@ -257,6 +258,7 @@ fRefreshImage();         % show the image again
             'TooltipString',    'Select a rectangular ROI', ...
             'separator',        'on',...
             'State',            'off', ...
+            'enable',           'off',...           
             'clickedCallback', {@clickedToolButton,BUTTON_TYPES.RECT},...            
             'tag',              'rectangle_roi');
         
@@ -282,16 +284,19 @@ fRefreshImage();         % show the image again
         uitoggletool(ht,...
             'CData',               s.ico.win_copy,...
             'oncallback',          'warndlg(''Is yet to come'')',...@copyROIs,...
+            'Enable',              'off',...
             'tooltipstring',       'Copy ROI(s): CTRL-1');
        
         uitoggletool(ht,...
             'CData',               s.ico.win_paste,...
             'oncallback',          'warndlg(''Is yet to come'')',...@pasteROIs,...
+            'Enable',              'off',...
             'tooltipstring',       'Paste ROI(s): CTRL-2');
   
         uitoggletool(ht,...
             'CData',               s.ico.ml_del,...
             'oncallback',          'warndlg(''Is yet to come'')',...@deleteROIs,...
+            'Enable',              'off',...
             'tooltipstring',       'Delete ALL ROI(s): CTRL-3');
         
         uitoggletool(ht,...
@@ -360,8 +365,8 @@ fRefreshImage();         % show the image again
         f = uimenu(parentFigure,...
             'Label','ROI...');
         uimenu(f,...
-            'Label','Add ROI',...
-            'callback','warndlg(''Is yet to come'')',...@defineROI,...
+             'Label','Select ROI',...
+            'callback',@fSelectRoiByName,...@defineROI,...
             'accelerator','r');
         uimenu(f,...
             'Label','Copy ROI(s)',...
@@ -523,7 +528,7 @@ fRefreshImage();         % show the image again
                             error('Bad roiType')
                  end
                 roiLast.Position = pos;   
-                roiLast.xyInd    = xy;          % shape in xy plane
+                roiLast.ytInd    = xy;          % shape in xy plane
                 roiLast.Name     = roiName;
                 roiLast.AverType = avType;
                 roiLast.SeqNum   = 1;           % sequence number TBD
@@ -534,7 +539,7 @@ fRefreshImage();         % show the image again
              case 'initShapesYT',
                 % initalizes all lines and figures for view
 
-                view.xy          = roiLast.xyInd;
+                view.xy          = roiLast.ytInd;
                 view.pos         = roiLast.Position;
                 view.posr        = PosToRect(view.pos);
                 view.clr         = roiLast.Color;
@@ -566,11 +571,11 @@ fRefreshImage();         % show the image again
                 set(view.hText,    'visible','off')
                 
                 % add context menu
-                 set(view.hBoundBox,'uicontextmenu',cntxMenu)
+                set(view.hBoundBox,'uicontextmenu',cntxMenu)
 
                 % output
                 roiLast.YT = view;                 
-                roiLast.XY = [];
+                %roiLast.XY = [];
                 
             case 'addPoint',
                 % add point to a freehand line
@@ -592,23 +597,24 @@ fRefreshImage();         % show the image again
                 % redraw the last ROI object pos
                 pos                     = Data;
                 
+                % init only rect
                  switch roiLast.Type,
-                     case ROI_TYPES.RECT,
+                     case {ROI_TYPES.RECT,ROI_TYPES.ELLIPSE,ROI_TYPES.FREEHAND},
                         xy          = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
-                     case ROI_TYPES.ELLIPSE,
-                        xyr         = pos(3:4)/2;        % radius
-                        xyc         = pos(1:2)+ xyr;     % center
-                        tt          = linspace(0,2*pi,30)';
-                        xy          = [cos(tt)*xyr(1) + xyc(1), sin(tt)*xyr(2) + xyc(2)];
-                     case ROI_TYPES.FREEHAND,
-                        pos_old     = rectangleInitialPosition;
-                        xy_old      = shapeInitialDrawing;
-                        % rescale
-                        xyc         = pos(1:2)      + pos(3:4)/2;     % center
-                        xyc_old     = pos_old(1:2)  + pos_old(3:4)/2;     % center
-                        x           = (xy_old(:,1) - xyc_old(1))*pos(3)/(eps+pos_old(3)) + xyc(1);
-                        y           = (xy_old(:,2) - xyc_old(2))*pos(4)/(eps+pos_old(4)) + xyc(2); 
-                        xy          = [x(:) y(:)];
+%                      case ROI_TYPES.ELLIPSE,
+%                         xyr         = pos(3:4)/2;        % radius
+%                         xyc         = pos(1:2)+ xyr;     % center
+%                         tt          = linspace(0,2*pi,30)';
+%                         xy          = [cos(tt)*xyr(1) + xyc(1), sin(tt)*xyr(2) + xyc(2)];
+%                      case ROI_TYPES.FREEHAND,
+%                         pos_old     = rectangleInitialPosition;
+%                         xy_old      = shapeInitialDrawing;
+%                         % rescale
+%                         xyc         = pos(1:2)      + pos(3:4)/2;     % center
+%                         xyc_old     = pos_old(1:2)  + pos_old(3:4)/2;     % center
+%                         x           = (xy_old(:,1) - xyc_old(1))*pos(3)/(eps+pos_old(3)) + xyc(1);
+%                         y           = (xy_old(:,2) - xyc_old(2))*pos(4)/(eps+pos_old(4)) + xyc(2); 
+%                         xy          = [x(:) y(:)];
                  end;
                 roiLast.Position        = pos; %[x,y,w,h]
                 posr                    = PosToRect(pos);
@@ -623,7 +629,7 @@ fRefreshImage();         % show the image again
 %                 for j=1:8,
 %                     set(roiLast.XY.hCornRect(j), 'position',cornerRectangles{j},'visible','on');
 %                 end
-                vPos    = randi([5 max(11,ceil(pos(4)))-5],1,1);
+                vPos    = 5; %randi([5 max(11,ceil(pos(4)))-5],1,1);
                 set(roiLast.YT.hText,'pos',roiLast.Position(1:2)+[5,vPos], 'visible','on')
                 
             case 'setClr',
@@ -690,36 +696,41 @@ fRefreshImage();         % show the image again
                 % redraw XY view according to info from YT view
                 
                 % check if XY is initialized
-                if ~isfield(roiLast.XY,'hBoundBox'), return; end;
+                if ~isfield(roiLast.YT,'hBoundBox'), return; end;
                 
                 % extract Y length from XY space
-                posXY                = get(roiLast.XY.hBoundBox,'pos');
+%                posYT                = get(roiLast.YT.hBoundBox,'pos');
                 
                 % position is defined by 
+                posXY                = roiLast.Position;
                 posYT([2 4])         = posXY([2 4]);
                 posYT([1 3])         = [10 nT-20];                
                 
-                % init shapes
-                pos                  = posYT;
-                xy                   = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];                
-                clr                 = 'y';
-                roiLast.YT.hShape  =  line('xdata',xy(:,1),'ydata',xy(:,2),...
-                        'lineStyle','--',...
-                        'lineWidth',1, ...
-                        'Color',clr);
-                roiLast.YT.hBoundBox = rectangle('position',pos,...
-                        'lineStyle',':',...
-                        'lineWidth',0.5, ...
-                        'curvature',curv,...                       
-                        'edgeColor',clr);
-                cornerRectangles = getCornerRectangles(pos);
-                for j=1:8,
-                 roiLast.YT.hCornRect(j) = rectangle('position',cornerRectangles{j},...
-                        'lineWidth',1, ...
-                        'edgeColor',clr);
-                end
-                roiLast.YT.hText =  text(pos(1),pos(2),roiLast.Name,'color',roiLast.Color,'interpreter','none');  
-                
+%                 % init shapes
+%                 pos                  = posYT;
+%                 xy                   = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];                
+%                 clr                 = 'y';
+%                 curv                = [0,0]; % curvature
+%                 roiLast.YT.hShape  =  line('xdata',xy(:,1),'ydata',xy(:,2),...
+%                         'lineStyle','--',...
+%                         'lineWidth',1, ...
+%                         'Color',clr);
+%                 roiLast.YT.hBoundBox = rectangle('position',pos,...
+%                         'lineStyle',':',...
+%                         'lineWidth',0.5, ...
+%                         'curvature',curv,...                       
+%                         'edgeColor',clr);
+% %                 cornerRectangles = getCornerRectangles(pos);
+% %                 for j=1:8,
+% %                  roiLast.YT.hCornRect(j) = rectangle('position',cornerRectangles{j},...
+% %                         'lineWidth',1, ...
+% %                         'edgeColor',clr);
+% %                 end
+%                 roiLast.YT.hText =  text(pos(1),pos(2),roiLast.Name,'color',roiLast.Color,'interpreter','none');  
+
+                fManageLastRoi('initShapesYT',0);
+
+
                 %  hide it
                 set(roiLast.YT.hShape,   'visible','on')
                 set(roiLast.YT.hBoundBox,'visible','on')
@@ -941,7 +952,7 @@ fRefreshImage();         % show the image again
         fManageRoiArray('delete',activeRectangleIndex);
         activeRectangleIndex    = -1;
         guiState =  GUI_STATES.ROI_INIT; 
-    
+        set(handStr.roiFig, 'pointer','arrow');
         fRefreshImage();
 
     end
@@ -998,6 +1009,39 @@ fRefreshImage();         % show the image again
 
     end
 
+    function fSelectRoiByName(src,eventdata)
+        % Allows user to select ROI from list of names  
+
+        % return any active back to place
+        if activeRectangleIndex > 0,
+            fManageRoiArray('copyToList',activeRectangleIndex);
+        end
+
+        % create name list
+        roiNum      = length(SData.strEvent);
+        roiNames    = {};
+        for m = 1:roiNum,
+            roiNames{m}    = SData.strEvent{m}.Name;
+        end
+        
+        [s,ok]      = listdlg('PromptString','Select Event by Name:','ListString', roiNames,'SelectionMode','single');
+        if ~ok, return; end;
+        
+        activeRectangleIndex   = s; 
+        % select this ROI from the list
+        fManageRoiArray('copyFromList',activeRectangleIndex);            
+        fManageLastRoi('updateView',activeRectangleIndex);
+        fManageLastRoi('setClr','g');
+        %fManageRoiArray('copyToList',activeRectangleIndex);
+        %activeRectangleIndex = -1;
+                
+        guiState        = GUI_STATES.ROI_SELECTED;        
+        fRefreshImage();
+        
+
+    end
+
+
 %-----------------------------------------------------
 % ROI Input & Output
 
@@ -1024,10 +1068,23 @@ fRefreshImage();         % show the image again
             roiLast.Type                = currentRoiType;
             
             currentXY                   = [1 1; 1 10;10 10;10 1; 1 1];
-            if isfield(SData.strEvent{i},'xyInd')
-                currentXY               = SData.strEvent{i}.xyInd;
+            if isfield(SData.strEvent{i},'ytInd') && ~isempty(SData.strEvent{i}.ytInd),
+                currentXY               = SData.strEvent{i}.ytInd;
             else
-                thisRoiIsOK             = false;
+                % roi is defined in XY view
+                if isfield(SData.strEvent{i},'xyInd'),
+                    % full rectangle
+                    minv                 = min(SData.strEvent{i}.xyInd);
+                    maxv                 = max(SData.strEvent{i}.xyInd);
+                    currentXY(1,:)       = [1 minv(2)];
+                    currentXY(2,:)       = [nT minv(2)];
+                    currentXY(3,:)       = [nT maxv(2)];
+                    currentXY(4,:)       = [1 maxv(2)];
+                    currentXY(5,:)       = [1 minv(2)];
+                    
+                else
+                    thisRoiIsOK             = false;
+                end
             end
             
             % check area
@@ -1041,6 +1098,7 @@ fRefreshImage();         % show the image again
             
             % check max Id
             if thisRoiIsOK , 
+                SData.strEvent{i}.ytInd = currentXY;
                 roiLast         = SData.strEvent{i};   
                 fManageLastRoi('initShapesYT',0);
                 % add to the pool
@@ -1090,7 +1148,7 @@ fRefreshImage();         % show the image again
             
             %pos                 = SData.strEvent{i}.Position;
             xy                  = [get(SData.strEvent{i}.YT.hShape,'xdata')' get(SData.strEvent{i}.YT.hShape,'ydata')'];
-            SData.strEvent{i}.xyInd    = xy; %[pos(1:2); pos(1:2)+[0 pos(4)];pos(1:2)+pos(3:4);pos(1:2)+[pos(3) 0]];
+            SData.strEvent{i}.ytInd    = xy; %[pos(1:2); pos(1:2)+[0 pos(4)];pos(1:2)+pos(3:4);pos(1:2)+[pos(3) 0]];
             % actual indexes
             %maskIN                = inpolygon(X,Y,xy(:,1),xy(:,2));
             SData.strEvent{i}.TimeInd               = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
@@ -1106,6 +1164,14 @@ fRefreshImage();         % show the image again
             delete(SData.strEvent{i}.YT.hCornRect);     SData.strEvent{i}.YT.hCornRect = [];
             delete(SData.strEvent{i}.YT.hText);         SData.strEvent{i}.YT.hText = [];
               
+                        
+            % do not touch old data
+            if roiIsBeingEdited,
+                % mean if any ois invalidated
+                SData.strEvent{i}.meanROI   = [];
+                SData.strEvent{i}.procROI   = [];
+            end;
+
             
         end
         
@@ -1167,13 +1233,17 @@ fRefreshImage();         % show the image again
                         % nothing is sellected
                         continue
                 end                
+           [isOverRectangle, isEdge, whichEdge_trbl] = isMouseOverEdge(point, SData.strEvent{i}.Position);
+            if isOverRectangle, % && SData.strEvent{i}.Active, % Active helps when one of the rectangles is under editing
+                % check if the selection tool fits SData.strROI{i}.Type
                 yesItIs = true;
                 index = i;
                 break
             end
         end
         
-    end
+        end
+   end
 
    function [result, isEdge, whichEdge_trbl] = isMouseOverEdge(point, rectangle)
         %check if the point(x,y) is over the edge of the
@@ -2201,7 +2271,7 @@ fRefreshImage();         % show the image again
     function fCloseRequestFcn(~, ~)
         % This is where we can return the ROI selected
         
-        fExportROI();               % check that ROI structure is OK
+        %fExportROI();               % check that ROI structure is OK
         
         %uiresume(handStr.roiFig);
         try
