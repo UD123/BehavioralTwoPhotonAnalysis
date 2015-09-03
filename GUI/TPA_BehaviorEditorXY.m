@@ -20,6 +20,7 @@ function [Par] = TPA_BehaviorEditorXY(Par)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 19.30 07.05.15 UD     ROI naming with zeros
 % 19.08 07.10.14 UD     Adding image processing
 % 18.09 07.07.14 UD     Fixing XY field init
 % 16.09 21.02.14 UD     Get 4 windows sync back on move
@@ -124,6 +125,7 @@ activeYaxisIndex   = 1;
 activeZstackIndex   = 1;
 activeTimeIndex     = 1;
 %activeIndexFixed    = true(4,1); % indicxates which index has not been changed
+previousXYZTIndex       = [activeXaxisIndex activeYaxisIndex activeZstackIndex activeTimeIndex];
 
 %-----------------------------------------------------
 % init image
@@ -848,7 +850,7 @@ fRefreshImage();       % second time to show ROI on image
                 activeIndx              = length(SData.strEvent) + 1;
                 
                 % update name
-                fManageLastRoi('setName',sprintf('EV:%2d Z:%d',activeIndx,roiLast.zInd));
+                fManageLastRoi('setName',sprintf('EV:%02d Z:%d',activeIndx,roiLast.zInd));
                 
                 
                 SData.strEvent{activeIndx}      = roiLast;
@@ -1080,7 +1082,7 @@ fRefreshImage();       % second time to show ROI on image
                     roiLast.Type     = ROI_TYPES.ELLIPSE;
                     roiLast.CountId  = i;
                     fManageLastRoi('initFreehand',currentXY);
-                    fManageLastRoi('setName',sprintf('ROI:%2d Z:%d',i,activeZstackIndex));
+                    fManageLastRoi('setName',sprintf('ROI:%02d Z:%d',i,activeZstackIndex));
                 else                
                     roiLast         = SData.strEvent{i};   
                     fManageLastRoi('initShapesXY',0);
@@ -1127,6 +1129,7 @@ fRefreshImage();       % second time to show ROI on image
         for i=1:roiNum,
             
             % check for problems
+            if ~isfield(SData.strEvent{i},'XY'), continue; end; % ROI was not displayed
             if isempty(SData.strEvent{i}.XY.hShape),
                 continue;
             end

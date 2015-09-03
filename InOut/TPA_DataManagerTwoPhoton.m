@@ -15,6 +15,7 @@ classdef TPA_DataManagerTwoPhoton
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 19.26 17.04.15 UD     Load ROIs by Z stack.
     % 19.23 17.02.15 UD     Assign all files without video files.
     % 19.19 11.01.15 UD     Fixing bug with shifts
     % 19.16 30.12.14 UD     Support multi dimensional shift 
@@ -330,7 +331,7 @@ classdef TPA_DataManagerTwoPhoton
                 
                 nTs         = round(nT/obj.SliceNum);
                 if nT ~= nTs*obj.SliceNum,
-                    DTP_ManageText([], sprintf('Slice number %d should divide the number of images %d in file %s. Please Fix it.',sliceNum,nT,fileDirName), 'E' ,0);
+                    DTP_ManageText([], sprintf('Slice number %d should divide the number of images %d in file %s. Please Fix it.',obj.SliceNum,nT,fileDirName), 'E' ,0);
                     return;
                 end
                 imgData             = reshape(imgData,[nR,nC,obj.SliceNum,nTs]);
@@ -794,6 +795,58 @@ classdef TPA_DataManagerTwoPhoton
             
             %DTP_ManageText([], 'All the data has been read successfully', 'I' ,0)   ;             
             
+        end
+        % ---------------------------------------------
+        
+        % ==========================================
+        function [obj, usrData] = LoadRoiData(obj, strROI )
+            % LoadRoiData - loads newStr to roi according to z stack
+            % Input:
+            %     strROI     - structure of ROIs
+            % Output:
+            %     usrData   - user structure information for specific trial
+            
+            if nargin < 2, error('Must have 2 aruments') = 1; end;
+            %if nargin < 3, currZstack = 1; end;
+            
+            usrData = [];
+            roiNum  = length(strROI);
+            
+            % check consistency
+            %if currZstack < 1, error('currZstack must be integer > 0'); end
+            if roiNum < 1, warndlg('Input data does not have ROIs'); return; end;
+            if ~isfield(strROI{1},'zInd'), error('Input structure is not valid ROI'); end;
+            if obj.SliceNum < 2, warndlg('Did you forget to specify number of Z stacks? You have only 1'); return; end;
+            %if currZstack > obj.SliceNum, error('currZstack must be integer > 0'); end
+            
+            % get all z stacks
+            zInd        = zeros(roiNum,1);
+            for m = 1:roiNum,
+                zInd(m)       = strROI{m}.zInd;
+            end
+            
+            % select Z stack to import from
+            zIndList    = min(zInd):max(zInd);
+            [s,ok] = listdlg('PromptString','Select Z Stack to Import from :','ListString',num2str(zIndList(:)),'SelectionMode','single','Name','Select From');
+            if ~ok, return; end;
+            zIndFrom    = zIndList(s);
+            
+            % select Z index to assign
+            zIndList    = 1:obj.SliceNum;
+            [s,ok] = listdlg('PromptString','Select Z Stack to Assign new ROIs :','ListString',num2str(zIndList(:)),'SelectionMode','single','Name','Assign To');
+            if ~ok, return; end;
+            zIndTo    = zIndList(s);
+            
+            % select
+            ii      = zInd == zIndFrom;
+            usrData  = strROI(ii);
+            roiNum  = length(usrData);  
+            for m = 1:roiNum,
+                usrData{m}.zInd       = (zIndTo); 
+            end
+            
+            % output
+            DTP_ManageText([], sprintf('TwoPhoton : %d ROIs are assigned to Z-Stack %d successfully',roiNum,zIndTo), 'I' ,0)   ;             
         end
         % ---------------------------------------------
   

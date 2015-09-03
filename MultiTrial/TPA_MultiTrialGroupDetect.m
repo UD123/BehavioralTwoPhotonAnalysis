@@ -9,6 +9,7 @@ classdef TPA_MultiTrialGroupDetect
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 19.30 07.05.15 UD     Delay map with time filtering
     % 19.22 12.02.15 UD     Delay map is created
     % 19.11 16.10.14 UD     Created
     %-----------------------------
@@ -264,7 +265,7 @@ classdef TPA_MultiTrialGroupDetect
             
             % sort
             [sV,sI] = sort(scoreEventRoi,2,'descend');
-            maxShow = min(3,roiNum); % show the best number
+            maxShow = min(7,roiNum); % show the best number
             
             % show the best winners
             %obj                         = LoadData(obj);
@@ -274,7 +275,7 @@ classdef TPA_MultiTrialGroupDetect
                     dataStr              = dataStrAll{eId,rId};  
                     DTP_ManageText([],sprintf('Best %d : Event : %s, Roi : %s',rBestId,dataStr.EventName,dataStr.RoiName),'I' ,0) ;
                     
-                    figNumTmp            = roiNum*eId + rId + figNum;
+                    figNumTmp            = 0; %roiNum*eId + rId + figNum;
                     obj                  = ShowOneGroup(obj, dataStr, figNumTmp);                      
                 end
             end
@@ -366,7 +367,7 @@ classdef TPA_MultiTrialGroupDetect
             
             % sort
             [sV,sI] = sort(scoreEventRoi,2,'descend');
-            maxShow = min(5,roiNum); % show the best number
+            maxShow = min(7,roiNum); % show the best number
             
             % show the best winners
             %obj                         = LoadData(obj);
@@ -496,8 +497,13 @@ classdef TPA_MultiTrialGroupDetect
             trialNum                = obj.MngrData.ValidTrialNum;
             frameNum                = 1;
             
+            % ask fort frame range  
+            frameRange              = [1 obj.MngrData.TwoPhoton_FrameNum];
+            [obj, frameRange]       = SelectFrameRange(obj, frameRange);
+            
+            
             % start analysis
-            delayMapTrialRoi        = zeros(trialNum,roiNum);
+            delayMapTrialRoi        = nan(trialNum,roiNum);
             
             % detect first time events
             %for eId = 1:eventNum,
@@ -519,6 +525,8 @@ classdef TPA_MultiTrialGroupDetect
                     DTP_ManageText([], sprintf('Group : ROI and Event number mnissmatch. Requires debug.'), 'E' ,0)   ;                    
                     continue;
                 end
+                
+                
         
                 % Set dF/F data container
                 %dffDataArray        = zeros(frameNum,traceNum);
@@ -526,7 +534,12 @@ classdef TPA_MultiTrialGroupDetect
                 eventTimeArray      = zeros(2,traceNum);
                 for m = 1:traceNum,
                     %dffDataArray(:,m)   = dbROI{m,4};
-                    eventTimeArray(:,m) = dataStr.Event{m,4}';    
+                    % support continuous functions
+                    eventData           = dataStr.Event{m,4};
+                    iid                 = find(eventData > 0); 
+                    if isempty(iid),    iid = [10 frameNum]; end; % 10 - strt at some point
+                    eventTimeArray(1,m) = iid(1);    
+                    eventTimeArray(2,m) = iid(end);    
                 end   
                 startFrame              = eventTimeArray(1,:);
                 %startFrame              = zeros(1,traceNum);
@@ -536,11 +549,14 @@ classdef TPA_MultiTrialGroupDetect
                 [obj.MngrData, dataStr] = ComputeSpikes(obj.MngrData, dataStr);     
                 
                 % find first events
-                spikeData               = zeros(1,traceNum);
+                spikeData               = nan(1,traceNum);
                 for m = 1:traceNum,
-                    ii                  = find(dataStr.Roi{m,4}>0,1,'first');
+                    % transitions from 0 to 1
+                    spikeTrace          = dataStr.Roi{m,4} > 0;
+                    indOnset            = find(spikeTrace(1:end-1) == 0 & spikeTrace(2:end) == 1);
+                    ii                  = find(indOnset >= frameRange(1) & indOnset <= frameRange(2),1,'first');
                     if isempty(ii), continue; end;
-                    spikeData(m)        = ii;    
+                    spikeData(m)        = indOnset(ii);    
                 end                  
                 % assign
                 delayData               = spikeData -  startFrame; 
@@ -554,8 +570,10 @@ classdef TPA_MultiTrialGroupDetect
                 cmap    = hot(8); 
             else
                 coolLen = -min(-1,min(delayMapTrialRoi(:)));
-                hotLen  = max(delayMapTrialRoi(:)); %frameNum - coolLen;
+                hotLen  = max(1,max(delayMapTrialRoi(:))); %frameNum - coolLen;
                 lenSum  = (coolLen + hotLen);
+                % map Nan to red
+                delayMapTrialRoi(isnan(delayMapTrialRoi)) = -(coolLen + 1);
                 coolLen = ceil(coolLen./lenSum*128);
                 hotLen  = ceil(hotLen./lenSum*128);
                 cmapH   = hot(hotLen);cmapC = bone(coolLen);
@@ -563,9 +581,11 @@ classdef TPA_MultiTrialGroupDetect
                 %cmapH   = jet(hotLen);cmapC = jet(coolLen);
                 %cmap    = [cmapC(end:-1:1,:);[0 0 0];cmapH];
                 %cmap    = [cmapC;[0 0 0];cmapH(end:-1:1,:)];
-                cmap    = [cmapC(end:-1:1,:);[0 0 0];cmapH];
+                cmap    = [[0.5 0.5 0.5];cmapC(end:-1:1,:);[0 0 0];cmapH];
+                %cmap    = [[1 0 0];cmapC;[1 1 1];cmapH(end:-1:1,:)];
                 %cmap    = [cmapH;[0 0 0];cmapC(end:-1:1,:)];
                 %cmap    = jet(64);
+                clims    = [-(coolLen + 1) hotLen];
             end
             
             % show all scores
@@ -573,11 +593,12 @@ classdef TPA_MultiTrialGroupDetect
             figure(figNum),set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none')
             %imagesc(delayMapTrialRoi,'CDataMapping','direct'),colormap(cmap);colorbar;
             %imagesc(delayMapTrialRoi,[-coolLen hotLen]),colormap('default');colorbar;
-            imagesc(delayMapTrialRoi),colormap(cmap);colorbar;
+            imagesc(delayMapTrialRoi,clims),colormap(cmap);colorbar;
             axis xy; % to match view in multri-trial
             %imagesc(imageRGB),colorbar;
             %xlabel('Roi [#]'),
-            ylabel('Trials'),title(sprintf('Frame Delay for each First ROI Spike from Event %s',eventNames{1}))
+            ylabel('Trials'),
+            title(sprintf('Frame Delay for First ROI Spike in range [%d:%d] from Event %s ',frameRange(1),frameRange(2),eventNames{1}))
             
             % mark ROIs
             oldticksX       = get(gca,'xtick');
@@ -589,6 +610,34 @@ classdef TPA_MultiTrialGroupDetect
         end
         % ---------------------------------------------
         
+        
+        % ==========================================
+        function [obj, frameRange] = SelectFrameRange(obj, frameRange)
+            % SelectFrameRange - selects frame range for filtering
+            % of the ROI spike events
+            isOK                  = false; % support next level function
+            options.Resize        ='on';
+            options.WindowStyle   ='modal';
+            options.Interpreter   ='none';
+            prompt                = {'ROI Spike Event Start and Stop [Video Frame Numbers]',...            
+                                    };
+            name                ='Add New Event to all trials:';
+            numlines            = 1;
+            defaultanswer       ={num2str(frameRange)};
+            answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
+            if isempty(answer), return; end;
+
+
+            % try to configure
+            frameRange          = str2num(answer{1});
+
+            % check
+            if numel(frameRange) ~= 2,
+                errordlg('You must provide two frame numbers for event start and stop')
+                return
+            end
+        
+        end
         
         % ==========================================
         function obj = ShowOneGroup(obj, DataStr, figNum)

@@ -20,6 +20,9 @@ function [Par] = TPA_TwoPhotonEditorXY(Par)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 20.05 19.05.15 UD     ROI export mask is fixed
+% 20.04 17.05.15 UD     ROI delete fixed
+% 19.30 07.05.15 UD     ROI naming with zeros
 % 19.17 03.01.15 UD     adding move of all ROIs
 % 19.16 31.12.14 UD     speedup by non computing image transforms again
 % 19.15 18.12.14 UD     allow smaller ROIs and STD image for Adam
@@ -431,9 +434,9 @@ fRefreshImage();        % second time to show ROI on image
         imgAxes = axes();
         set(imgAxes, ...
             'tickdir','out', ...
-            'drawmode','fast',...
             'position',[0.0 0.03 1 1]);
-          
+     %         'drawmode','fast',...
+        
         imgShow                 = imagesc(imageIn,'parent',imgAxes);  colormap('gray'); hold on;
         imgNav                  = plot([10 10],[1 nR],'color','c','LineStyle',':');     hold off;        
         axis off;
@@ -878,7 +881,7 @@ fRefreshImage();        % second time to show ROI on image
                 roiLast.CountId             = SData.strManager.roiCount;
                 
                 % update name
-                roiName                     = sprintf('ROI:%2d Z:%d',roiLast.CountId,roiLast.zInd);
+                roiName                     = sprintf('ROI:%02d Z:%d',roiLast.CountId,roiLast.zInd);
                 fManageLastRoi('setName',roiName);
                 
                 
@@ -1208,7 +1211,7 @@ fRefreshImage();        % second time to show ROI on image
                     roiLast.Type     = ROI_TYPES.ELLIPSE;
                     roiLast.CountId  = i;
                     fManageLastRoi('initFreehand',currentXY);
-                    fManageLastRoi('setName',sprintf('ROI:%2d Z:%d',i,activeZstackIndex));
+                    fManageLastRoi('setName',sprintf('ROI:%02d Z:%d',i,activeZstackIndex));
                 else                
                     roiLast         = SData.strROI{i};   
                     fManageLastRoi('initShapesXY',0);
@@ -1232,7 +1235,7 @@ fRefreshImage();        % second time to show ROI on image
         for i = 1:roiNum,
             if ~badRoiId(i), continue; end;
             %fManageRoiArray('delete',i);
-            SData.strROI{i} = [];
+            SData.strROI(i) = [];
             DTP_ManageText([], sprintf('TwoPhoton : ROI %d is deleted',i), 'E' ,0)   ;
         end
         
@@ -1248,15 +1251,15 @@ fRefreshImage();        % second time to show ROI on image
 
         roiNum      = length(SData.strROI);
         %[Y,X]       = meshgrid(1:nR,1:nC);
-        [X,Y]       = meshgrid(1:nR,1:nC);  % export
+        [X,Y]       = meshgrid(1:nC,1:nR);  % export
         %roiList = {};     
         %return
         for i=1:roiNum,
             
             % check for problems
-            if isempty(SData.strROI{i}.XY.hShape),
-                continue;
-            end
+            if isempty(SData.strROI{i}),continue; end;
+            if ~isfield(SData.strROI{i},'XY'), continue;  end;
+            if isempty(SData.strROI{i}.XY.hShape), continue;  end;
             
             %pos                 = SData.strROI{i}.Position;
             xy                  = [get(SData.strROI{i}.XY.hShape,'xdata')' get(SData.strROI{i}.XY.hShape,'ydata')'];
@@ -1275,12 +1278,12 @@ fRefreshImage();        % second time to show ROI on image
             delete(SData.strROI{i}.XY.hCornRect);       SData.strROI{i}.XY.hCornRect = [];
             delete(SData.strROI{i}.XY.hText);           SData.strROI{i}.XY.hText = [];
             
-            % do not touch old data
-            if roiIsBeingEdited,
-                % mean if any ois invalidated
-                SData.strROI{i}.meanROI   = [];
-                SData.strROI{i}.procROI   = [];
-            end;
+%             % do not touch old data
+%             if roiIsBeingEdited,
+%                 % mean if any ois invalidated
+%                 SData.strROI{i}.meanROI   = [];
+%                 SData.strROI{i}.procROI   = [];
+%             end;
             
         end
         

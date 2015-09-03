@@ -443,8 +443,9 @@ fileNames    = Par.DMT.RoiFileNames;
 set(handles.listboxTRF,'String',fileNames,'Value',1)
 
 % get data
+% Remove comb_video.avi
 Par          = getappdata(handles.figure1,'ParEdit');  % 
-fileNames    =  cat(1,Par.DMB.VideoFrontFileNames,Par.DMB.VideoSideFileNames);
+fileNames    = Par.DMB.VideoFrontFileNames; % cat(1,,Par.DMB.VideoSideFileNames);
 set(handles.listboxBIF,'String',fileNames,'Value',1)
 
 % get data

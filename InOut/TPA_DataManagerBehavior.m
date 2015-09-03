@@ -15,6 +15,8 @@ classdef TPA_DataManagerBehavior
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 20.05 19.05.15 UD     Video files only could be imported
+    % 19.32 12.05.15 UD     Can import events without video files
     % 19.09 14.10.14 UD     Import Jaaba from external storage support
     % 19.06 21.09.14 UD     Import movie_comb.avi files.   Deal with names and Dir structures
     % 19.05 11.09.14 UD     Dump color info. File size equalization.   
@@ -1140,6 +1142,8 @@ classdef TPA_DataManagerBehavior
             
             if obj.VideoFileNum ~= obj.EventFileNum
                 DTP_ManageText([], 'Bahavior : Video and Analysis file number missmatch.', 'W' ,0)   ;
+                % use only event data
+                %imageNum = obj.EventFileNum;
             end
             
             

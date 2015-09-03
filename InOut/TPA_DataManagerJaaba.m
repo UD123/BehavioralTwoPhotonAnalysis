@@ -23,6 +23,7 @@ classdef TPA_DataManagerJaaba
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 20.05 19.05.15 UD     Import Jaaba with EventManager Class.   
     % 19.08 07.10.14 UD     For ronen - do not number names.   
     % 19.06 21.09.14 UD     Import movie_comb.avi files.   
     % 18.12 09.04.14 UD     new Jaaba Excel with User support
@@ -311,19 +312,21 @@ classdef TPA_DataManagerJaaba
             eventData       = {};
             
             
-            % prepare ROI prototype 
-            roiLast.Type     = 1; % ROI_TYPES.RECT should be
-            roiLast.Active   = true;   % designates if this pointer structure is in use
-            roiLast.NameShow = false;       % manage show name
-            roiLast.zInd     = 1;           % location in Z stack
-            roiLast.tInd     = 1;           % location in T stack
-            pos              = [0 0 0.1 0.1];
-            xy               = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
-            roiLast.Position = pos;   
-            roiLast.xyInd    = xy;          % shape in xy plane
-            roiLast.Name     = 'Rect';
-            roiLast.TimeInd  = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
-            roiLast.SeqNum   = 1;           % designates Event number
+%             % prepare ROI prototype 
+%             roiLast.Type     = 1; % ROI_TYPES.RECT should be
+%             roiLast.Active   = true;   % designates if this pointer structure is in use
+%             roiLast.NameShow = false;       % manage show name
+%             roiLast.zInd     = 1;           % location in Z stack
+%             roiLast.tInd     = 1;           % location in T stack
+%             pos              = [0 0 0.1 0.1];
+%             xy               = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
+%             roiLast.Position = pos;   
+%             roiLast.xyInd    = xy;          % shape in xy plane
+%             roiLast.Name     = 'Rect';
+%             roiLast.TimeInd  = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+%             roiLast.SeqNum   = 1;           % designates Event number
+            
+            roiLast          = TPA_EventManager();
             
             
             % get data from Jabba scores
@@ -340,6 +343,7 @@ classdef TPA_DataManagerJaaba
                 % make sure to close all events
                 eventBool(1)    = false;
                 eventBool(end)  = false;
+                dataLen         = length(eventBool);
                 
                 
                 % start and end of the events - could be multiple
@@ -367,12 +371,21 @@ classdef TPA_DataManagerJaaba
                     ii                  = validInd(k);
                     pos                 = [startInd(ii) 50 eventDuration(ii) 150];
                     xy                  = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
+%                     roiLast.Color       = rand(1,3);   % generate colors
+%                     roiLast.Position    = pos;   
+%                     roiLast.xyInd       = xy;          % shape in xy plane
+%                     roiLast.Name        = sprintf('%s:%02d',jabData{m}.Name,k); %jabData{m}.Name;
+%                     roiLast.SeqNum      = k;
+%                     roiLast.TimeInd     = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
                     roiLast.Color       = rand(1,3);   % generate colors
-                    roiLast.Position    = pos;   
-                    roiLast.xyInd       = xy;          % shape in xy plane
+                    %roiLast.Position    = pos;   
+                    %roiLast.xyInd       = xy;          % shape in xy plane
                     roiLast.Name        = sprintf('%s:%02d',jabData{m}.Name,k); %jabData{m}.Name;
                     roiLast.SeqNum      = k;
-                    roiLast.TimeInd     = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+                    roiLast.tInd        = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+                    roiLast.yInd        = round([min(xy(:,2)) max(xy(:,2))]);  % time/frame indices
+                    roiLast.Data        = zeros(dataLen,1);
+                    roiLast.Data(startInd(ii):stopInd(ii))  = 1;
                 
                     % save
                     eventCount           = eventCount + 1;

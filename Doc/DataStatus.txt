@@ -8,6 +8,20 @@
 % JVer 	TPVer 	Date  		Who 	What
 % ==================================================
 % 
+% Set : \D30a\8_17_14
+% 0100 	19.25 	31.03.15	UD  	1. Copy to disk using setUpDirUD
+%
+% Set : \D30a\8_12_14
+% 0100 	19.24 	10.03.15	UD  	1. Copy to disk.
+%
+% Set : \D30a\8_9_14
+% 0100 	19.24 	10.03.15	UD  	1. Copy to disk.
+%
+% Set : \D30a\7_15_14
+% 0100 	19.24 	10.03.15	UD  	1. Copy to disk. Can not train
+%
+%
+% =================================================
 % Set : \D10\8_6_14
 % 0100 	19.20 	20.01.15	UD  	1. Training Lift,Grab.Atmouth,Miss.
 % 0100 	19.20 	13.01.15	UD  	1. Adding Image and behaviour. Checking JAABA features.

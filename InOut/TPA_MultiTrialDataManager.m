@@ -8,6 +8,9 @@ classdef TPA_MultiTrialDataManager
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 20.07 27.05.15 UD     Fixing event multi index bug - check that events are not present
+    % 20.04 17.05.15 UD     Event data is continuos
+    % 19.28 28.04.15 UD     Fixing time when multiple Z-stacks are used
     % 19.22 12.02.15 UD     Adding more test cases for load
     % 19.11 16.10.14 UD     Supporting seq num and group analysis. strcmp review
     % 19.04 12.08.14 UD     Working on integration with Event Editor for JAABA files
@@ -45,6 +48,7 @@ classdef TPA_MultiTrialDataManager
         TwoPhoton_Resolution = [1 1 1 1];
         TwoPhoton_Offset     = [0 0 0 0];
         TwoPhoton_FrameNum   = 0;
+        TwoPhoton_SliceNum   = 0;
         
         % TYPES (shouild be defined globaly)
         % message
@@ -91,6 +95,7 @@ classdef TPA_MultiTrialDataManager
             obj.Behavior_Offset         = Par.DMB.Offset;
             obj.TwoPhoton_Resolution    = Par.DMT.Resolution;
             obj.TwoPhoton_Offset        = Par.DMT.Offset;
+            obj.TwoPhoton_SliceNum      = Par.DMT.SliceNum;
             
             % check
             if obj.Behavior_Resolution(4) < 1,
@@ -99,7 +104,11 @@ classdef TPA_MultiTrialDataManager
             if obj.TwoPhoton_Resolution(4) < 1,
                 obj.TwoPhoton_Resolution(4) = 1;
             end
-            obj.TimeConvertFact         = round(obj.Behavior_Resolution(4)/obj.TwoPhoton_Resolution(4));   
+            if obj.TwoPhoton_SliceNum < 1,
+                obj.TwoPhoton_SliceNum = 1;
+            end
+            
+            obj.TimeConvertFact         = round(obj.Behavior_Resolution(4)/obj.TwoPhoton_Resolution(4)*obj.TwoPhoton_SliceNum);   
             
         end
         % ---------------------------------------------
@@ -149,7 +158,7 @@ classdef TPA_MultiTrialDataManager
             
             
             obj.TimeConvertFact         = tcFact;
-            obj.Behavior_Resolution(4)  = tcFact * obj.TwoPhoton_Resolution(4);
+            obj.Behavior_Resolution(4)  = tcFact * obj.TwoPhoton_Resolution(4)*obj.TwoPhoton_SliceNum;
         end
         % ---------------------------------------------
         
@@ -167,11 +176,11 @@ classdef TPA_MultiTrialDataManager
             %%%%%%%%%%%%%%%%%%%%%%
             % Do some data ready test
             %%%%%%%%%%%%%%%%%%%%%%
-            obj.DMT                 = obj.DMT.CheckData(false);    % important step to validate number of valid trials  
+            obj.DMT                 = obj.DMT.CheckData(false);     % important step to validate number of valid trials  
                                                                     % false means do not read dir again
-            validTrialNum           = obj.DMT.RoiFileNum;    % only analysis data
+            validTrialNum           = obj.DMT.RoiFileNum;           % only analysis data
             if validTrialNum < 1,
-                DTP_ManageText([], sprintf('Multi Trial : Missing data in directory %s. Please check the folder or run Data Check',obj.DMT.RoiDir),  'E' ,0);
+                DTP_ManageText([], sprintf('Multi Trial : Missing Two Photon ROI data in directory %s. Please check the folder or run Data Check',obj.DMT.RoiDir),  'E' ,0);
                 return
             else
                 DTP_ManageText([], sprintf('Multi Trial : Found %d Analysis files of ROI. ',validTrialNum),  'I' ,0);
@@ -267,24 +276,31 @@ classdef TPA_MultiTrialDataManager
 
                     % read the info
                     for eInd = 1:numEvent,
-                       obj.DbEventRowCount = obj.DbEventRowCount + 1;
+                       obj.DbEventRowCount                = obj.DbEventRowCount + 1;
                        obj.DbEvent{obj.DbEventRowCount,1} = trialInd;
                        obj.DbEvent{obj.DbEventRowCount,2} = eInd;                   % event num
                        obj.DbEvent{obj.DbEventRowCount,3} = strEvent{eInd}.Name;      % name 
-                       obj.DbEvent{obj.DbEventRowCount,4} = ceil(strEvent{eInd}.TimeInd/obj.TimeConvertFact); % rescale time
+                       if isfield(strEvent{eInd},'Data') && ~isempty(strEvent{eInd}.Data),
+                            eventData                     = strEvent{eInd}.Data(:,2); % rescale time
+                       else
+                           eventData                      = zeros(2400,1); % NEED to know frameNum
+                       end
+                       dataLen                            = size(eventData,1);
+                       if dataLen > 10, eventData         = resample(double(eventData),1,obj.TimeConvertFact); end;
+                       obj.DbEvent{obj.DbEventRowCount,4} = eventData; % rescale time
                        % seq num support
                        seqNum = 1;
                        if isfield(strEvent{eInd},'SeqNum'), seqNum = strEvent{eInd}.SeqNum; end
                        obj.DbEvent{obj.DbEventRowCount,5} = seqNum;
                     end
-                    
-                    % adding dummy Query event
-                    obj.DbEventRowCount = obj.DbEventRowCount + 1;
-                    obj.DbEvent{obj.DbEventRowCount,1} = trialInd;
-                    obj.DbEvent{obj.DbEventRowCount,2} = numEvent+1;                   % event num
-                    obj.DbEvent{obj.DbEventRowCount,3} = 'Query';       % name 
-                    obj.DbEvent{obj.DbEventRowCount,4} = [0 0];             % rescale time - will be assigned later
-                    obj.DbEvent{obj.DbEventRowCount,5} = 1;
+%                     
+%                     % adding dummy Query event
+%                     obj.DbEventRowCount = obj.DbEventRowCount + 1;
+%                     obj.DbEvent{obj.DbEventRowCount,1} = trialInd;
+%                     obj.DbEvent{obj.DbEventRowCount,2} = numEvent+1;                   % event num
+%                     obj.DbEvent{obj.DbEventRowCount,3} = 'Query';       % name 
+%                     obj.DbEvent{obj.DbEventRowCount,4} = [0 0];             % rescale time - will be assigned later
+%                     obj.DbEvent{obj.DbEventRowCount,5} = 1;
             end
             
             obj = CheckUniqueNames(obj);            
@@ -377,7 +393,7 @@ classdef TPA_MultiTrialDataManager
             %    none
             % Output:
             %    RoiNames     - list of names
-            if obj.UniqueRoiNum < 1 && ~isempty(obj.DbROI),,
+            if obj.UniqueRoiNum < 1 && ~isempty(obj.DbROI),
                 %RoiNames            = unique(strvcat(obj.DbROI{:,3}),'rows');
                 RoiNames            = unique(obj.DbROI(:,3));
             else % save computation
@@ -640,7 +656,7 @@ classdef TPA_MultiTrialDataManager
             DataStr = [];
             
             eventNames        = GetEventNames(obj);
-            eventInd          = strmatch(EventName,eventNames);
+            eventInd          = strmatch(EventName,eventNames,'exact');
             if length(eventInd) < 1,
                 DTP_ManageText([], sprintf('Multi Trial : Can not find Event name %s.',EventName),  'E' ,0);
                 return
@@ -658,7 +674,8 @@ classdef TPA_MultiTrialDataManager
             end
             
             % find trials for selected Event
-            eventPos        =  strmatch(EventName,obj.DbEvent(:,3),'exact') ; %strmatch(EventName,strvcat(obj.DbEvent{:,3})) ;          
+            %eventPos        =  strmatch(EventName,obj.DbEvent(:,3),'exact') ; %strmatch(EventName,strvcat(obj.DbEvent{:,3})) ;          
+            eventPos        =  find(strcmp(EventName,obj.DbEvent(:,3))) ; % faile when the same string in different name          
             trialIndEvent   = [obj.DbEvent{eventPos,1}]; % all trials for specific event
 
             % filter by current input

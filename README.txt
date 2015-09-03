@@ -30,6 +30,21 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Ver 	Date  		Who 	What
 %==================================================
+% 20.10 24.07.15    UD  Merging
+% 20.09 21.07.15	UD 	Skipping previous versions. MAC xls save resolve.
+% 20.08 15.07.15	UD 	Overlay TP on Video data.
+% 20.07 28.05.15	UD 	Fixing delay for continuous traces.
+% 20.06 22.05.15	UD 	Trajectory is differential. Fixing Prarie interface.
+% 20.05 19.05.15	UD 	Checking if it is possible do not use EventList object.
+% 20.04 17.05.15	UD 	Merging with 2003 - continuous events.
+% 19.32 10.05.15	UD 	Optical flow visualization.
+% 19.31 07.05.15	UD 	Testing and working on complex events.
+% 19.30 05.05.15	UD 	Debugging traces. Func Reconstruction.
+% 19.29 01.05.15	UD 	Working on complicated search events and addind cell functional reconstruction tool.
+% 19.28 24.04.15	UD 	Creating complicated search events. Fixing Time when Number of Slices is used
+% 19.27 21.04.15	UD 	Working with Maria and fixing bugs
+% 19.26 18.04.15	UD 	ToDo list: ROI from different z stacks
+% 19.25 10.03.15	UD 	Bug fixing - integration with Prarie.
 % 19.24 23.02.15	UD 	Working on trajectory integration. Adding Event management in XY view.
 % 19.23 17.02.15	UD 	Testing delay view. Integrating trajectories.
 % 19.22 12.02.15	UD 	Creating cell activity delay view.

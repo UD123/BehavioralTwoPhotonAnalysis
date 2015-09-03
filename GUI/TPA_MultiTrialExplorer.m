@@ -12,6 +12,8 @@ function [Par] = TPA_MultiTrialExplorer(Par)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 20.04 17.05.15 UD     Event data is continuos
+% 19.28 28.04.15 UD     Togle image view.
 % 19.23 17.02.15 UD     Togle text labels.
 % 19.22 15.02.15 UD     Spike detection.
 % 19.21 27.01.15 UD     Adding Axis change.
@@ -77,6 +79,7 @@ MaxColorNum         = Par.Roi.MaxColorNum;
 dataStrForExport    = [];
 cursorPosition      = [1 1]; % two cursor data 
 enableTextLabel     = true;
+enableImageShow     = false;  % show image data instead of plots
 
 % Render all
 fCreateGUI();
@@ -124,7 +127,7 @@ fUpdateGUI();
        
         % ------------------------------------------        
         meanTrace           = zeros(frameNum,1);
-        %currTraces          = zeros(frameNum,traceNum);
+        currTraces          = zeros(frameNum,traceNum);
         meanTraceCnt        = 0;
 
         for p = 1:traceNum,
@@ -137,19 +140,43 @@ fUpdateGUI();
             if ~isempty(dbROI{p,4}), % protect from empty
                 tId     = dbROI{p,1};
                 clr     = TraceColorMap(mod(tId,MaxColorNum)+1,:);
-                plot(handStr.hAxTraces,timeTwoPhoton,dbROI{p,4}+pos,'color',clr);  hold on ;
+                if ~enableImageShow
+                    plot(handStr.hAxTraces,timeTwoPhoton,dbROI{p,4}+pos,'color',clr);  hold on ;
+                else
+                    currTraces(:,p) = dbROI{p,4};
+                end
                 meanTrace    = meanTrace + dbROI{p,4};
                 meanTraceCnt = meanTraceCnt + 1;
             end
             % draw ref lines
-            plot(handStr.hAxTraces,timeTwoPhoton,zeros(frameNum,1) + pos,':','color',[.7 .7 .7]); hold on 
-            % draw names
-            roiName       = sprintf('T-%2d: %s',dbROI{p,1},dbROI{p,3});
-            if enableTextLabel,
-            text(timeTwoPhoton(3),pos + 0.2,roiName,'color','w','FontSize',8);
+            if ~enableImageShow            
+                plot(handStr.hAxTraces,timeTwoPhoton,zeros(frameNum,1) + pos,':','color',[.7 .7 .7]); hold on;
             end
+%             % draw names
+%             roiName       = sprintf('T-%2d: %s',dbROI{p,1},dbROI{p,3});
+%             if enableTextLabel,
+%             text(timeTwoPhoton(3),pos + 0.2,roiName,'color','w','FontSize',8);
+%             end
             %currTraces(:,p)     = dbROI{p,4};
         end
+        
+        % show image
+        if enableImageShow,
+            imagesc(timeTwoPhoton,1:traceNum,currTraces',[-.1 trialSkip]);
+            colormap(TraceColorMap)
+            trialSkip = 1;
+        end
+        
+        % show names
+        if enableTextLabel,
+            for p = 1:traceNum,
+                roiName         = sprintf('T-%2d: %s',dbROI{p,1},dbROI{p,3});
+                pos             = trialSkip*(p - 1);
+                text(timeTwoPhoton(3),pos + 0.2,roiName,'color','w','FontSize',8);
+            end
+        end
+        
+        
         ylabel('Trace Num'),%xlabel('Frame Num')
         ylim([-0.5 trialSkip*traceNum+0.5]),axis tight
         hold off
@@ -186,7 +213,7 @@ fUpdateGUI();
              DTP_ManageText([], sprintf('Multi Trial : No Event data found for this selection.'),  'W' ,0);
              %return
         end
-        eventSkip           = 1;         % the distance between lines
+        eventSkip           = 5;         % the distance between lines - pixels
         
         % specify at least one event to reset axis
         eventNum            = size(dbEvent,1);
@@ -207,8 +234,8 @@ fUpdateGUI();
             if ~isempty(dbEvent{p,4}), % protect from empty
                 tId         = dbEvent{p,1};
                 clr         = TraceColorMap(mod(tId,MaxColorNum)+1,:);
-                tt          = max(1,min(imFrameNum,round(dbEvent{p,4}))); % vector
-                eventData(tt(1):tt(2)) = 0.5;
+                maxLen      = min(imFrameNum,length(dbEvent{p,4})); % vector
+                eventData(1:maxLen) = dbEvent{p,4}(1:maxLen);%0.5;
                 plot(handStr.hAxBehave,timeBehavior,eventData+pos,'color',clr);  hold on ;
             end
             % draw ref lines
@@ -341,6 +368,10 @@ fUpdateGUI();
         % check if to render text labels
         enableTextLabel     = strcmp(get(handStr.hShowText,'State'),'on');
         
+        % check if to show image data or plot
+        enableImageShow     = strcmp(get(handStr.hShowImage,'State'),'on');
+        
+        
         fRenderRoiTraceAxis(dataStr);                
         fRenderEventTraceAxis(dataStr);
         set(handStr.hTtl,'string',ttlTxt,'color','w');
@@ -383,7 +414,7 @@ fUpdateGUI();
             otherwise % standard
                             TraceColorMap = colormap(colName);
         end
-        TraceColorMap   = TraceColorMap(randperm(MaxColorNum),:);
+        %TraceColorMap   = TraceColorMap(randperm(MaxColorNum),:);
 
         % update all
         fUpdateGUI(0,0);
@@ -571,6 +602,12 @@ fUpdateGUI();
             'tooltipstring',       'Toggle text labels for Roi and Events',...
             'State',                'on');
         
+        hShowImage = uitoggletool(ht,...
+            'CData',               repmat(rand(16,1,3),[1 16 1]),...
+            'ClickedCallback',     {@fUpdateGUI},...@,...
+            'tooltipstring',       'Toggle Trace View - Image or Plot Lines',...
+            'State',                'off');
+        
         
 %         uitoggletool(ht,...
 %             'CData',               s.ico.win_copy,...
@@ -694,6 +731,7 @@ fUpdateGUI();
         handStr.hShowCursor = hShowCursor;
         handStr.hShowSpikes = hShowSpikes;
         handStr.hShowText   = hShowText;
+        handStr.hShowImage  = hShowImage;
         
         handStr.hCursorUp   = hCursorUp;
         handStr.hCursorMid  = hCursorMid;
@@ -789,7 +827,7 @@ fUpdateGUI();
         btnNumber=6;
         yLabelPos=top-(btnNumber-1)*(btnHt+labelHt+spacing);
         labelStr='Colormap';
-        labelList=' hsv| jet| cool| hot| gray| pink| copper| flag | yellow | red | green | blue | cyan';
+        labelList=' jet| hsv| cool| hot| gray| pink| copper| flag | yellow | red | green | blue | cyan ';
         cmdList=str2mat( ...
             ' colormap(hsv)',' colormap(jet)',' colormap(cool)',' colormap(hot)', ...
             ' colormap(gray)',' colormap(pink)',' colormap(copper)');

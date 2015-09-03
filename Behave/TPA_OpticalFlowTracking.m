@@ -7,6 +7,9 @@ classdef TPA_OpticalFlowTracking
     %-----------------------------------------------------
     % Ver       Date        Who     What
     %-----------------------------------------------------
+    % 2005      19.05.15    UD      View Type selection.    
+    % 1932      12.05.15    UD      Small change for Ronen.    
+    % 1931      10.05.15    UD      Updating for Nice trajectory generation.
     % 0101      23.02.15    UD      Created using Matlab 2014b.
     %-----------------------------------------------------
     properties (Constant)
@@ -30,7 +33,7 @@ classdef TPA_OpticalFlowTracking
         TrackHist                       % history for all frames
         % thresholds
         TrackProxNewThr     = 5^2*2;          % prune the new points that are too close
-        TrackProxDensThr    = 5^2*2/4;   % prune the valid points that are too close
+        TrackProxDensThr    = 5^2*2/12;   % prune the valid points that are too close
        
         % Track Linkage
         TrackIsValid        = [];      % bool array size of track number
@@ -41,6 +44,8 @@ classdef TPA_OpticalFlowTracking
         TrackPosStdThr      = 30;     % abs distance in pixels
         TrackMinLength      = 10;       % min length in frames
         
+        % Average Trajectory
+       % TrajectoryData         = [];   % contains trajectory info - average N x 3 array
         
         % diplay for debug
         videoReader
@@ -342,14 +347,30 @@ classdef TPA_OpticalFlowTracking
             
             if obj.TrackMaxLen < 0.3*frameCnt, error('Trackers are too short'); end;
             
-            trackCnt            = obj.TrackCnt;
+            isValidTrack    = obj.TrackIsValid;
+            
+            % recover this info
+            if isempty(obj.VideoSize),
+            nT              = obj.FrameCnt;
+            nR              = 240;
+            nC              = 320;
+            else
+            nT              = frameCnt;
+            nR              = obj.VideoSize(1);
+            nC              = obj.VideoSize(2);                
+            end
+            
             
             % find the longest
-            activeBool          = squeeze(obj.TrackPosFrame(:,1,:)) > 0 ;
-            activeFrames        = sum(activeBool);
-            validTrackBool      = activeFrames > 0.85*obj.TrackMaxLen;
+%             activeBool          = squeeze(obj.TrackPosFrame(:,1,:)) > 0 ;
+%             activeFrames        = sum(activeBool);
+            validTrackBool      = isValidTrack; %activeFrames > obj.TrackMinLength; %0.25*obj.TrackMaxLen;
             validTrackNum       = sum(validTrackBool);
             assert(validTrackNum > 0,'Something strange - can not find valid trackers');
+            
+            % patch - exclude food trajectories : frame 700 xpos > 150
+            nonValidTrackBool   = squeeze(obj.TrackPosFrame(700,1,:)) > nC/2;
+            validTrackBool      = validTrackBool & (~nonValidTrackBool);
             
             % average the found tracks
             xPos                = squeeze(obj.TrackPosFrame(:,1,validTrackBool));
@@ -358,16 +379,6 @@ classdef TPA_OpticalFlowTracking
             
             trackPos            = [(1:frameCnt)' sum(xPos,2)./tCount sum(yPos,2)./tCount];
             
-            
-            % debug
-            if obj.FigNum < 1, return; end;
-            
-            figure,
-            plot3(trackPos(:,2),trackPos(:,1),trackPos(:,3))
-            title('Average Frame Trajectory')
-            set(gca,'zdir','reverse'); % like in image
-            xlabel('X [pix]'),ylabel('Time [frame]'),zlabel('Y [pix]')
-            axis([1 320 1 frameCnt 1 240]), grid on;
             
         end
         
@@ -393,11 +404,15 @@ classdef TPA_OpticalFlowTracking
             % Create objects for reading a video from a file,
             
             % Create a video file reader.
-            %objSys.reader = vision.VideoFileReader('atrium.avi'); % vippedtracking.avi visiontraffic.avi
+            %obj.videoReader = vision.VideoFileReader('atrium.avi'); % vippedtracking.avi visiontraffic.avi
+            %obj.videoReader     = vision.VideoFileReader('visiontraffic.avi'); % vippedtracking.avi visiontraffic.avi
             %objSys.reader = vision.VideoFileReader('C:\Projects\Tyto\Data\Video\ZoomIn\OnTable.MP4'); % vippedtracking.avi visiontraffic.avi
             %objSys.reader = vision.VideoFileReader('C:\Projects\Tyto\Data\Video\ZoomIn\OnCup.MP4'); % vippedtracking.avi visiontraffic.avi
             %obj.videoReader = vision.VideoFileReader('C:\Projects\Tyto\Data\Video\ZoomIn\OnUri.MP4'); % vippedtracking.avi visiontraffic.avi
-            obj.videoReader = vision.VideoFileReader('C:\Projects\Tyto\Data\Video\CamShake\CamShake_Far.avi');
+            %obj.videoReader = vision.VideoFileReader('C:\Projects\Tyto\Data\Video\CamShake\CamShake_Far.avi');
+
+            fname               = 'C:\Uri\DataJ\Janelia\Videos\d10\Basler_side_06_08_2014_d10_015.avi';
+            obj.videoReader     = vision.VideoFileReader(fname);
         end
         
         % ======================================
@@ -488,13 +503,13 @@ classdef TPA_OpticalFlowTracking
             nR              = 240;
             nC              = 320;
             else
-            nT              = obj.VideoSize(4);
+            nT              = obj.FrameCnt;
             nR              = obj.VideoSize(1);
             nC              = obj.VideoSize(2);                
             end
  
             % show tracks in 3D
-            figure;set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none');
+            figure;set(gcf,'Tag','AnalysisROI','Color','w','Name','Traj'),clf; colordef(gcf,'none');
             cmap  = jet(trackCnt);
             for k = 1:trackCnt,
                 if ~isValidTrack(k), continue; end;
@@ -506,8 +521,10 @@ classdef TPA_OpticalFlowTracking
                     posX  = filtfilt(alpha,[1 -(1-alpha)],posX);
                     posY  = filtfilt(alpha,[1 -(1-alpha)],posY);
                 end
-                plot3(posX,frameInd,posY,'color',cmap(k,:)); hold on;
-                text(posX(1),frameInd(1),posY(1),num2str(k),'color',cmap(k,:),'FontSize',6);
+%                 plot3(posX,frameInd,posY,'color',cmap(k,:)); hold on;
+%                 text(posX(1),frameInd(1),posY(1),num2str(k),'color',cmap(k,:),'FontSize',6);
+                plot3(posX,frameInd,posY,'color','r'); hold on;
+                %text(posX(1),frameInd(1),posY(1),num2str(k),'color',cmap(k,:),'FontSize',6);
             end
             hold off;
             set(gca,'zdir','reverse'); % like in image
@@ -519,28 +536,99 @@ classdef TPA_OpticalFlowTracking
         
         
         
+        % ======================================
+        function obj = ShowAverage(obj)
+            % ShowAverage - get valid tracks and average them
+            % Input:
+            %   obj         - updated object with track info
+            % Output:
+            %   obj         - updated object with frame x pos x trackId array
+            
+            if obj.TrackMaxLen < 10, error('Run track linkage or something bad with video - shake is too big'); end;
+            
+            frameCnt            = obj.FrameCnt;
+            
+            if obj.TrackMaxLen < 0.3*frameCnt, error('Trackers are too short'); end;
+            
+            trackCnt        = obj.TrackCnt;
+            trackPosFrame   = obj.TrackPosFrame;
+            isValidTrack    = obj.TrackIsValid;
+            
+            % recover this info
+            if isempty(obj.VideoSize),
+            nT              = obj.FrameCnt;
+            nR              = 240;
+            nC              = 320;
+            else
+            nT              = frameCnt;
+            nR              = obj.VideoSize(1);
+            nC              = obj.VideoSize(2);                
+            end
+            
+            
+            % find the longest
+%             activeBool          = squeeze(obj.TrackPosFrame(:,1,:)) > 0 ;
+%             activeFrames        = sum(activeBool);
+            validTrackBool      = isValidTrack; %activeFrames > obj.TrackMinLength; %0.25*obj.TrackMaxLen;
+            validTrackNum       = sum(validTrackBool);
+            assert(validTrackNum > 0,'Something strange - can not find valid trackers');
+            
+            % patch - exclude food trajectories : frame 700 xpos > 150
+            nonValidTrackBool   = squeeze(obj.TrackPosFrame(700,1,:)) > nC/2;
+            validTrackBool      = validTrackBool & (~nonValidTrackBool);
+            
+            % average the found tracks
+            xPos                = squeeze(obj.TrackPosFrame(:,1,validTrackBool));
+            yPos                = squeeze(obj.TrackPosFrame(:,2,validTrackBool));
+            tCount              = sum(xPos > 0,2)+eps;
+            
+            trackPos            = [(1:frameCnt)' sum(xPos,2)./tCount sum(yPos,2)./tCount];
+            
+            
+            % debug
+            if obj.FigNum < 1, return; end;
+            hFig = findobj('Name','Traj');
+            if ~isempty(hFig), % add to the current
+                figure(hFig(1))
+                hold on;
+                plot3(trackPos(:,2),trackPos(:,1),trackPos(:,3),'c','LineWidth',2);
+                hold off;
+            else
+                figure,set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none');
+                plot3(trackPos(:,2),trackPos(:,1),trackPos(:,3),'g','LineWidth',2)
+                title('Average Frame Trajectory')
+                set(gca,'zdir','reverse'); % like in image
+                xlabel('X [pix]'),ylabel('Time [frame]'),zlabel('Y [pix]')
+                axis([1 nC 1 frameCnt 1 nR]), grid on;
+            end
+            
+        end
+        
+        
         
         % ======================================
-        function obj = TrackBehavior(obj)
+        function obj = TrackBehavior(obj,viewType)
             % Tracks behavioral image data
             % Assumes it is global
+            if nargin < 2, viewType = 'side'; end;
             
             global SData
             
             % use only side info
-            sId         = 1;
+            sId         = find(strcmp({'side','front'},viewType));
+            if isempty(sId),error('viewType must be side or front'); end;
             
             % check
             [nR,nC,nD,nT] = size(SData.imBehaive);
             obj.VideoSize = size(SData.imBehaive); % for display
             if nT < 2, error('No Behavior data is found'); end;
             if nR > 240 || nC > 320,
-                warndlg('The video is too big. Please use decimation factors in Config Params to reduce the size','Video Size','modal')
-                return
+                warndlg('The video is too big. Please use decimation factors in Config Params to reduce the size to 240x320','Video Size','modal')
+                %return
             end
             
             % init IO
-            obj         = InputInit(obj);
+            %obj         = InputInit(obj);
             obj         = ShowInit(obj,1);
             
             % init Tracker
@@ -574,7 +662,85 @@ classdef TPA_OpticalFlowTracking
             
             % get average and show it
             %[obj,trackPos] = GetAverageTrack(obj);
+            obj = ShowAverage(obj);
             
+        end
+        
+        
+        
+        % ======================================
+        function obj = ShowVolume(obj)
+            % Tracks behavioral image data
+            % Assumes it is global
+            
+            global SData
+            
+            % use only side info
+            sId         = 1;
+            %indT        = 400:1400; % interesting part
+            xmin        = 700;
+            xmax        = 942;
+            xmean       = 831;
+            indT        = xmin:xmax; % interesting part
+            
+            % check
+            [nR,nC,nD,nT] = size(SData.imBehaive);
+            if nT < 2, error('No Behavior data is found'); end;
+            if nR > 240 || nC > 320,
+                warndlg('The video is too big. Please use decimation factors in Config Params to reduce the size','Video Size','modal')
+                return
+            end
+            
+            V3D                 = double(squeeze(SData.imBehaive(:,:,sId,indT)));
+            V3D                 = shiftdim(V3D,1);% z is Y and Y is Z
+            %[nC,nT,nR]          = size(V3D);
+            [X3D,Y3D,Z3D]       = meshgrid(indT,1:nC,1:nR);
+            
+            
+            % show slices
+            figure;set(gcf,'Tag','AnalysisROI','Color','w'),clf; %colordef(gcf,'none');
+            hsurfaces = slice(X3D,Y3D,Z3D,V3D,[xmin xmean xmax],[],[]);
+            set(hsurfaces,'FaceColor','interp','EdgeColor','none')
+            
+               
+            colormap gray;
+            set(gca,'zdir','reverse'); % like in image            
+            set(gca,'ydir','reverse'); 
+
+            
+            %hcont = contourslice(X3D,Y3D,Z3D,V3D,[ymean],[],[]);
+            %set(hcont,'EdgeColor',[0.7 0.7 0.7],'LineWidth',0.5)  
+            
+            trackCnt        = obj.TrackCnt;
+            trackPosFrame   = obj.TrackPosFrame;
+            isValidTrack    = obj.TrackIsValid;
+            
+            % show tracks in 3D
+            %cmap  = jet(trackCnt);
+            hold on;
+            for k = 1:trackCnt,
+                if ~isValidTrack(k), continue; end;
+                frameInd    = find(trackPosFrame(:,1,k) > 0);
+                frameInd    = frameInd(frameInd > xmin-20 & frameInd < xmax);
+                if isempty(frameInd),continue; end;
+                posX        = double(trackPosFrame(frameInd,1,k));
+                posY        = double(trackPosFrame(frameInd,2,k));
+%                 if DoFilter,
+%                     alpha = 0.1;
+%                     posX  = filtfilt(alpha,[1 -(1-alpha)],posX);
+%                     posY  = filtfilt(alpha,[1 -(1-alpha)],posY);
+%                 end
+                plot3(frameInd,posX,posY,'color','r'); 
+                %text(posX(1),frameInd(1),posY(1),num2str(k),'color',cmap(k,:),'FontSize',6);
+            end
+            hold off;
+            
+            ylabel('X [pix]'),xlabel('Time [frame]'),zlabel('Y [pix]')
+            %axis([1 nC zmin zmax 1 nR]), grid on;
+            axis tight
+            grid off
+            daspect([2 1 1])
+
         end
         
         
@@ -589,6 +755,7 @@ classdef TPA_OpticalFlowTracking
             
             % init Tracker
             videoFrame  = obj.videoReader.step();
+            obj.VideoSize = size(videoFrame);
             obj         = InitializeDetector(obj, videoFrame);
             obj         = InitializeTracks(obj);
             
@@ -616,7 +783,8 @@ classdef TPA_OpticalFlowTracking
             obj = ShowLinkage(obj);
             
             % get average and show it
-            [obj,trackPos] = GetAverageTrack(obj);
+            obj    = ShowAverage(obj);
+            %[obj,trackPos] = GetAverageTrack(obj);
             
         end
         
