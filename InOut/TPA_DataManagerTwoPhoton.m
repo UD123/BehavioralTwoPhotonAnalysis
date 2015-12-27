@@ -15,6 +15,9 @@ classdef TPA_DataManagerTwoPhoton
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 21.16 25.11.15 UD     remove return for Z stack
+    % 21.03 25.08.15 UD     Bring GUI inside
+    % 20.12 27.07.15 UD     Support video subset read
     % 19.26 17.04.15 UD     Load ROIs by Z stack.
     % 19.23 17.02.15 UD     Assign all files without video files.
     % 19.19 11.01.15 UD     Fixing bug with shifts
@@ -84,7 +87,8 @@ classdef TPA_DataManagerTwoPhoton
             % Output:
             %     default values
         end
-        % ---------------------------------------------
+        % ------------------------------------------
+        
         % ==========================================
         function obj = Clean(obj)
             % Clean - restores default
@@ -109,10 +113,10 @@ classdef TPA_DataManagerTwoPhoton
             obj.SliceNum                   = 1;             % if Z slice = 2 - two Z volumes are generated, 3 - 3 volumes
             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
         
-         % ==========================================
-         function [obj,isOK] = SetTrial(obj,trial)
+        % ==========================================
+        function [obj,isOK] = SetTrial(obj,trial)
              % sets trial and tests if it is OK
              
              isOK = false;
@@ -123,11 +127,10 @@ classdef TPA_DataManagerTwoPhoton
              isOK       = true;
              obj.Trial = trial;
          end % set.Trial
-        
+        % ------------------------------------------
          
-         
-         % ==========================================
-         function [obj,isOK] = SetResolution(obj,resolValues)
+        % ==========================================
+        function [obj,isOK] = SetResolution(obj,resolValues)
              % sets resolution for Video source
              
              isOK = false;
@@ -157,11 +160,10 @@ classdef TPA_DataManagerTwoPhoton
              DTP_ManageText([], sprintf('Resolution is : %d [um/pix] %d [um/pix] %d [um/frame] %d [frame/sec]',resolValues), 'I' ,0);
              
          end % set.Resolution
+        % ------------------------------------------
          
-         
-         
-         % ==========================================
-         function [obj,isOK] = SetDecimation(obj,decimFactor)
+        % ==========================================
+        function [obj,isOK] = SetDecimation(obj,decimFactor)
              % sets decimation factor for each dimension
              % updates resolution parameter
              
@@ -197,10 +199,10 @@ classdef TPA_DataManagerTwoPhoton
              
              
          end % set.Decimation
-         
-         
-         % ==========================================
-         function [obj,isOK] = SetSliceNum(obj,sliceNum)
+        % ------------------------------------------
+                 
+        % ==========================================
+        function [obj,isOK] = SetSliceNum(obj,sliceNum)
              % how many slices to split
 %              if obj.VideoFileNum < 1,
 %                  DTP_ManageText([], sprintf('No video data found. May be you need to load your video files.'), 'E' ,0);
@@ -211,8 +213,7 @@ classdef TPA_DataManagerTwoPhoton
              DTP_ManageText([], sprintf('Slice Number is : %d',sliceNum), 'I' ,0);
              
          end
-         
-         
+        % ------------------------------------------
          
         % ==========================================
         function obj = SelectTwoPhotonData(obj,dirPath)
@@ -247,17 +248,19 @@ classdef TPA_DataManagerTwoPhoton
                 
             DTP_ManageText([], 'TwoPhoton : data has been read successfully', 'I' ,0)   ;             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
         
         % ==========================================
-        function [obj, imgData] = LoadTwoPhotonData(obj,currTrial)
+        function [obj, imgData] = LoadTwoPhotonData(obj,currTrial, imageIndx)
             % LoadTwoPhotonData - loads Cell image for currTrial into memory
             % Input:
             %     currTrial - integer that specifies trial to load
+            %     imageIndx - certain images
             % Output:
             %     imgData   - 3D array image data
             
             if nargin < 2, currTrial = 1; end;
+            if nargin < 3, imageIndx = [1 Inf]; end;
             imgData             = [];
             
             % check
@@ -287,31 +290,44 @@ classdef TPA_DataManagerTwoPhoton
             %imgData             = imread(fileDirName,'tif'); % only one file
             %imgData             = Tiff(fileDirName,'r'); % structure from prarie
             imgInfo              = imfinfo(fileDirName);
-            imgData              = zeros(imgInfo(1).Height,imgInfo(1).Width,1,length(imgInfo),'uint16');      
-            
-            
-%             % this option is slow
-%             for fi = 1:length(imgInfo)
-%                 imgData(:,:,1,fi) = imread(fileDirName,'tif',fi);
-%             end     
             
             % inform
             DTP_ManageText([], sprintf('TwoPhoton : Loading data from file %s. Please Wait ...',fileDirName), 'I' ,0)   ;             
-
-            % another option :  TIff library
-            hTif                = Tiff(fileDirName,'r');
-            for fi = 1:length(imgInfo),
-                hTif.setDirectory(fi);
-                imgData(:,:,1,fi) = hTif.read;
-            end     
-            % need to get this info for write pocess
             
-            hTifInfo.Photometric        = hTif.getTag('Photometric');            
-            hTifInfo.BitsPerSample      = hTif.getTag('BitsPerSample');
-            hTifInfo.SamplesPerPixel    = size(imgData,3);
-            hTifInfo.Compression        =  hTif.getTag('Compression');
-            hTifInfo.PlanarConfiguration=  hTif.getTag('PlanarConfiguration');
-            hTif.close();
+            % this option is slow
+            if imageIndx(end) < Inf,
+                
+                imageIndx            = max(1,min(imageIndx,length(imgInfo)));
+                imageIndx            = imageIndx(1):imageIndx(end);
+                fileNumToRead        = numel(imageIndx);
+                imgData              = zeros(imgInfo(1).Height,imgInfo(1).Width,1,fileNumToRead,'uint16');      
+                
+
+                for fi = 1:fileNumToRead,
+                    imgData(:,:,1,fi) = imread(fileDirName,'tif',imageIndx(fi));
+                end     
+            
+            else
+                
+                % the entire file
+                imgData              = zeros(imgInfo(1).Height,imgInfo(1).Width,1,length(imgInfo),'uint16');      
+
+                % another option :  TIff library
+                hTif                = Tiff(fileDirName,'r');
+                for fi = 1:length(imgInfo),
+                    hTif.setDirectory(fi);
+                    imgData(:,:,1,fi) = hTif.read;
+                end     
+                % need to get this info for write pocess
+
+                hTifInfo.Photometric        = hTif.getTag('Photometric');            
+                hTifInfo.BitsPerSample      = hTif.getTag('BitsPerSample');
+                hTifInfo.SamplesPerPixel    = size(imgData,3);
+                hTifInfo.Compression        =  hTif.getTag('Compression');
+                hTifInfo.PlanarConfiguration=  hTif.getTag('PlanarConfiguration');
+                hTif.close();
+                obj.hTifRead                = hTifInfo; % remember in case ?
+            end
  
             % check decimation
             if any(obj.DecimationFactor > 1),
@@ -334,7 +350,10 @@ classdef TPA_DataManagerTwoPhoton
                     DTP_ManageText([], sprintf('Slice number %d should divide the number of images %d in file %s. Please Fix it.',obj.SliceNum,nT,fileDirName), 'E' ,0);
                     return;
                 end
-                imgData             = reshape(imgData,[nR,nC,obj.SliceNum,nTs]);
+                imgData         = reshape(imgData,[nR,nC,obj.SliceNum,nTs]);
+                if nTs == 1, % data is 3D - we need it to be 4D
+                    imgData     = cat(4,imgData,imgData);
+                end
                 
             end
             
@@ -344,10 +363,9 @@ classdef TPA_DataManagerTwoPhoton
             % output
             obj.Trial           = currTrial;
             obj.VideoDataSize   = imgSize;
-            obj.hTifRead        = hTifInfo; % remember in case ?
             DTP_ManageText([], sprintf('TwoPhoton : %d images are loaded from file %s successfully',obj.VideoDataSize(4),obj.VideoFileNames{currTrial}), 'I' ,0)   ;             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
         
         % ==========================================
         function obj = SaveTwoPhotonData(obj,currTrial,imgData)
@@ -428,7 +446,7 @@ classdef TPA_DataManagerTwoPhoton
             %obj.hTifWrite  = hTif; % remember in case ?
             DTP_ManageText([], sprintf('TwoPhoton : Done'), 'I' ,0)   ;             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
         
        % ==========================================
         function [obj, imgData] = ShiftTwoPhotonData(obj,imgData,currShift)
@@ -499,7 +517,7 @@ classdef TPA_DataManagerTwoPhoton
             DTP_ManageText([], sprintf('TwoPhoton : Registration data is applied'), 'I' ,0)   ;             
 
         end
-        % ---------------------------------------------
+        % ------------------------------------------
         
         % ==========================================
         function obj = SelectAnalysisData(obj,dirPath)
@@ -552,7 +570,7 @@ classdef TPA_DataManagerTwoPhoton
             DTP_ManageText([], sprintf('TwoPhoton : %d analysis data files has been read successfully',fileNum), 'I' ,0)   ;             
             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
         
        % ==========================================
         function [obj, fileName] = GetAnalysisFileName(obj,currTrial)
@@ -596,7 +614,43 @@ classdef TPA_DataManagerTwoPhoton
             
             
         end
-         
+        % ------------------------------------------        
+        
+               
+        % ==========================================
+        function [obj, strROI] = CheckRoiData(obj, strROI)
+            % CheckRoiData - checks ROI data
+            % Input:
+            %     strROI - integer that specifies trial to load
+            % Output:
+            %     strROI   - StrROI, StrEvent, strShift - are subfields  
+            
+            if nargin < 2, strROI = {}; end;
+            
+            numROI              = length(strROI);
+            if numROI < 1,
+                DTP_ManageText([], sprintf('ROI : No ROI data is found. Please select/load ROIs'),  'E' ,0);
+                return
+            end
+            
+            validROI            = true(numROI,1);
+            for m = 1:numROI,
+                 % check for multiple Z ROIs
+                if ~isfield(strROI{m},'Ind') ,
+                    DTP_ManageText([], sprintf('ROI : Something wrong with ROI %s. Export is not done properly',strROI{m}.Name),  'E' ,0);
+                    validROI(m) = false;
+                    continue
+                end
+                zInd             = strROI{m}.zInd; % whic Z it belongs
+                if zInd < 1 || zInd > obj.SliceNum,
+                    DTP_ManageText([], sprintf('ROI : %s does not belong to the specified z-stack number. Did you forget to configure Stack number?',strROI{m}.Name),  'E' ,0);
+                    validROI(m) = false;
+                    continue;
+                end
+               
+            end
+            
+        end
         
         % ==========================================
         function [obj, usrData] = LoadAnalysisData(obj,currTrial, strName)
@@ -625,7 +679,7 @@ classdef TPA_DataManagerTwoPhoton
             
             % check
              if ~exist(fileToLoad,'file'),
-                showTxt     = sprintf('TwoPhoton :  Analysis : Can not locate file %s. Nothing is loaded.',fileToLoad);
+                showTxt     = sprintf('TwoPhoton : Analysis : Can not locate file %s. Nothing is loaded.',fileToLoad);
                 DTP_ManageText([], showTxt, 'E' ,0) ;
                 return;
              end
@@ -641,6 +695,7 @@ classdef TPA_DataManagerTwoPhoton
             elseif strcmp(strName,'strROI'),
                 if isfield(usrData,'strROI'),
                     usrData          = usrData.strROI;
+                    [obj, usrData]   = CheckRoiData(obj, usrData);
                 else
                     usrData          = [];
                 end
@@ -662,7 +717,7 @@ classdef TPA_DataManagerTwoPhoton
                 
             DTP_ManageText([], sprintf('TwoPhoton : %s data from file %s has been loaded successfully',strName,obj.RoiFileNames{currTrial}), 'I' ,0)   ;             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
         
         % ==========================================
         function [obj, usrData] = SaveAnalysisData(obj,currTrial,strName,strVal)
@@ -725,7 +780,7 @@ classdef TPA_DataManagerTwoPhoton
                             
             DTP_ManageText([], sprintf('TwoPhoton : Analysis data has been saved to file %s',obj.RoiFileNames{currTrial}), 'I' ,0)   ;             
         end
-        % ---------------------------------------------        
+        % ------------------------------------------
         
         % ==========================================
         function obj = SelectAllData(obj,dirPath)
@@ -776,7 +831,7 @@ classdef TPA_DataManagerTwoPhoton
             %DTP_ManageText([], 'All the data has been selected successfully', 'I' ,0)   ;             
             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
         
         % ==========================================
         function [obj, imgData, usrData] = LoadAllData(obj,currTrial)
@@ -796,7 +851,7 @@ classdef TPA_DataManagerTwoPhoton
             %DTP_ManageText([], 'All the data has been read successfully', 'I' ,0)   ;             
             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
         
         % ==========================================
         function [obj, usrData] = LoadRoiData(obj, strROI )
@@ -816,7 +871,9 @@ classdef TPA_DataManagerTwoPhoton
             %if currZstack < 1, error('currZstack must be integer > 0'); end
             if roiNum < 1, warndlg('Input data does not have ROIs'); return; end;
             if ~isfield(strROI{1},'zInd'), error('Input structure is not valid ROI'); end;
-            if obj.SliceNum < 2, warndlg('Did you forget to specify number of Z stacks? You have only 1'); return; end;
+            if obj.SliceNum < 2, 
+                warndlg('Did you forget to specify number of Z stacks? You have only 1');  
+            end;
             %if currZstack > obj.SliceNum, error('currZstack must be integer > 0'); end
             
             % get all z stacks
@@ -848,7 +905,7 @@ classdef TPA_DataManagerTwoPhoton
             % output
             DTP_ManageText([], sprintf('TwoPhoton : %d ROIs are assigned to Z-Stack %d successfully',roiNum,zIndTo), 'I' ,0)   ;             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
   
         % ==========================================
         function obj = RemoveRecord(obj,currTrial, removeWhat)
@@ -892,7 +949,7 @@ classdef TPA_DataManagerTwoPhoton
 
             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
         
         % ==========================================
         function [obj, CheckOK] = CheckData(obj, ReadDir)
@@ -940,7 +997,7 @@ classdef TPA_DataManagerTwoPhoton
             
             if obj.VideoFileNum ~= obj.RoiFileNum
                 DTP_ManageText([], 'TwoPhoton : Video and Analysis file number missmatch.', 'W' ,0)   ;
-                imageNum         = obj.RoiFileNum;
+                %imageNum         = obj.RoiFileNum;
             end
             
             % summary
@@ -951,8 +1008,72 @@ classdef TPA_DataManagerTwoPhoton
             
             
         end
-        % ---------------------------------------------
+        % ------------------------------------------
          
+        % ==========================================
+        function [obj,isOK] = GuiSelectTrial(obj)
+        
+        % obj - data managing object
+        if nargin < 1, error('Must input Data Managing Object'); end
+        
+        isOK                = false; % support next level function
+        options.Resize      ='on';
+        options.WindowStyle ='modal';
+        options.Interpreter ='none';
+        prompt              = {sprintf('Enter trial number between %d:%d',1,obj.ValidTrialNum)};
+        name                ='Choose trial to load';
+        numlines            = 1;
+        defaultanswer       ={num2str(obj.Trial)};
+        
+        answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
+        if isempty(answer), return; end;
+        trialInd           = str2double(answer{1});
+        
+        % check validity
+        [obj,isOK]        = obj.SetTrial(trialInd);
+        
+        
+    end
+        % ------------------------------------------
+
+        % ==========================================
+        function [obj,isOK] = GuiSetDataParameters(obj)
+        
+        % obj - data managing object
+        if nargin < 1, error('Must input Data Managing Object'); end
+        
+        % config small GUI
+        isOK                  = false; % support next level function
+        options.Resize        ='on';
+        options.WindowStyle     ='modal';
+        options.Interpreter     ='none';
+        prompt                  = {'Data Resolution [X [um/pix] Y [um/pix] Z [um/frame] T [frame/sec]',...
+                                'Data Decimation Factor [X [(int>0)] Y [(int>0)] Z [(int>0)] T [(int>0)]',...            
+                                'Data Offset (N.A.)    [X [um] Y [um] Z [um] T [frame] ',...            
+                                'Slice Tiff File on Multiple Z Stacks [nZ - number of Z] ',...            
+                                };
+        name                ='Config Data Parameters';
+        numlines            = 1;
+        defaultanswer       ={num2str(obj.Resolution),num2str(obj.DecimationFactor),num2str(obj.Offset),num2str(obj.SliceNum)};
+        answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
+        if isempty(answer), return; end;
+        
+        
+        % try to configure
+        res                 = str2num(answer{1});
+        [obj,isOK1]       = obj.SetResolution(res) ;       
+        dec                 = str2num(answer{2});
+        [obj,isOK2]       = obj.SetDecimation(dec) ;       
+        isOK                = isOK1 && isOK2;
+        slc                 = str2num(answer{4});
+        [obj,isOK2]       = obj.SetSliceNum(slc) ;       
+        isOK                = isOK1 && isOK2;
+        
+        
+    end
+        % ------------------------------------------
+        
+        
         % ==========================================
         function obj = TestSelect(obj)
             % TestSelect - performs testing of the directory structure 
@@ -987,7 +1108,7 @@ classdef TPA_DataManagerTwoPhoton
             
          
         end
-        % ---------------------------------------------
+        % ------------------------------------------
      
         % ==========================================
         function obj = TestLoad(obj)
@@ -1015,8 +1136,9 @@ classdef TPA_DataManagerTwoPhoton
             if obj.VideoFileNum > 0,       figure(1),imshow(squeeze(imgData(:,:,1,frameNum))); end;
          
         end
-        % ---------------------------------------------
-      % ==========================================
+        % ------------------------------------------
+        
+        % ==========================================
         function obj = TestExport(obj)
             
             % TestExport - analysis data save and load
@@ -1035,8 +1157,7 @@ classdef TPA_DataManagerTwoPhoton
             obj             = obj.SaveTwoPhotonData(tempTrial, usrData);
             
         end
-         % ---------------------------------------------
-    
+        % ------------------------------------------    
         
         % ==========================================
         function obj = TestLoadDecimation(obj)
@@ -1089,7 +1210,7 @@ classdef TPA_DataManagerTwoPhoton
             if obj.VideoFileNum > 0,       figure(1),imshow(squeeze(imgData(:,:,1,frameNum))); end;
          
         end
-        % ---------------------------------------------
+        % ------------------------------------------
       
         % ==========================================
         function obj = TestAnalysis(obj)
@@ -1123,7 +1244,7 @@ classdef TPA_DataManagerTwoPhoton
             
          
         end
-        % ---------------------------------------------
+        % ------------------------------------------
     
         
     end% methods

@@ -255,10 +255,10 @@ classdef TPA_TestSyntheticDataGen
             
             % TestMultieFile - generates several files for test
             
-            cellType            = [1 2 3];
+            cellType            = [1 2 3 11 12];
             imgType             = 1; % camera man
             fileNum             = 5;
-            obj.FileDirPattern  = 'C:\\Uri\\DataJ\\Janelia\\Imaging\\T2\\02\\02_mT2_%03d.tif';
+            obj.FileDirPattern  = 'C:\\LabUsers\\Uri\\Data\\Janelia\\Imaging\\T2\\02\\02_T2_%03d.tif';
             
             % cells
             obj                 = GenCellData(obj, cellType);

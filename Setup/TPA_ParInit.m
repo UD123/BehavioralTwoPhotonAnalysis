@@ -8,6 +8,10 @@ function Par = TPA_ParInit
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 21.19 08.12.15 UD     Changing to Roi.dFFrange. Adding MinFluorLevel
+% 21.06 10.10.15 UD     Adding Event Detector
+% 21.04 25.08.15 UD     Artifact removal support in ROI data
+% 20.13 18.08.15 UD     ROI names from XML file
 % 19.21 20.01.15 UD     Support CSV file save for Mac
 % 19.16 30.12.14 UD     Multi dimensional registration support. Adding new hide names button.
 % 19.15 17.12.14 UD     STD image support
@@ -34,21 +38,21 @@ function Par = TPA_ParInit
 Par.CHANNEL_TYPES          = struct('BEHAVIOR',1,'TWOPHOTON',2);    % chnnel in use        
 Par.GUI_TYPES               = struct('MAIN_GUI',1,'TWO_PHOTON_XY',2,'TWO_PHOTON_YT',3,'BEHAVIOR_XY',4,'BEHAVIOR_YT',5,'ELECTROPHYS_YT',6);
 Par.ListGuiHandles          = [];  % container of the GUI handles
-Par.EVENT_TYPES             = struct('NONE',1,'UPDATE_IMAGE',2,'UPDATE_ROI',3,'UPDATE_POS',4);
+Par.EVENT_TYPES             = struct('NONE',1,'UPDATE_IMAGE',2,'UPDATE_ROI',3,'UPDATE_POS',4); % Sync events
 
 % states of the GUI
-Par.GUI_STATES              = struct('INIT',0,'ROI_INIT',1,'ROI_DRAW',2,'ROI_SELECTED',3,'ROI_EDIT',4,'ROI_MOVE',5,'ROI_MOVEALL',7,'HIDEALL',8,...
+Par.GUI_STATES              = struct('INIT',0,'ROI_INIT',1,'ROI_DRAW',2,'ROI_SELECTED',3,'ROI_EDIT',4,'ROI_MOVE',5,'ROI_MOVEALL',7,'ROI_ROTSCALEALL',8,'HIDEALL',9,...
                                     'BROWSE_ABSPOS',11,'BROWSE_DIFFPOS',12,'PLAYING',21);
 
 % which ROI averaging to perform
-%Par.ROIAVER_TYPE            = struct('AVER',1,'MAX',2,'LINE',3);
-Par.ROI_TYPES               = struct('RECT',1,'ELLIPSE',2,'FREEHAND',3);
 Par.IMAGE_TYPES             = struct('RAW',1,'MEAN',3,'MAX',2,'GRADT',4,'GRADXY',5,'STD',6,'DFF',7);  % which type of image representation to support
-Par.VIEW_TYPES              = struct('XY',1,'YT',2);
-Par.BUTTON_TYPES            = struct('NONE',1,'RECT',2,'ELLIPSE',3,'FREEHAND',4,'BROWSE',5,'PLAYER',6,'MOVEALL',7,'HIDEALL',8);
+Par.VIEW_TYPES              = struct('XY',1,'YT',2,'XYYT',3);
+Par.BUTTON_TYPES            = struct('NONE',1,'RECT',2,'ELLIPSE',3,'FREEHAND',4,'BROWSE',5,'PLAYER',6,'MOVEALL',7,'ROI_ROTSCALEALL',8,'HIDEALL',9);
+Par.ROI_TYPES               = struct('RECT',1,'ELLIPSE',2,'FREEHAND',3);
 Par.ROI_AVERAGE_TYPES       = struct('MEAN',1,'LOCAL_MAXIMA',2,'LINE_ORTHOG',3);
-Par.ROI_DELTAFOVERF_TYPES   = struct('MEAN',1,'MIN10',2,'STD',3,'MIN10CONT',4);
-Par.ROI_CELLPART_TYPES      = struct('SOMA_5',1,'SOMA_23',2,'APICAL_PROXIMAL',3,'APICAL_DISTAL',4,'APICAL_TUFT',5,'ROI',6);
+Par.ROI_ARTIFACT_TYPES      = struct('NONE',1,'BLEACHING',2,'SLOW_TIME_WAVE',3,'FAST_TIME_WAVE',4,'POLYFIT2',5);
+Par.ROI_DELTAFOVERF_TYPES   = struct('MEAN',1,'MIN10',2,'STD',3,'MIN10CONT',4,'MIN10BIAS',5);
+Par.ROI_CELLPART_TYPES      = struct('ROI',1,'SOMA_5',2,'SOMA_23',3,'APICAL_PROXIMAL',4,'APICAL_DISTAL',5,'APICAL_TUFT',6);
 
 
 %%%%%%%%%%%%%%%%%%%%%%
@@ -71,7 +75,8 @@ Par.FigNum                  = 100;                  % 0-no show 1,2,..-shows the
 
 % show
 Par.Debug.AverFluorFigNum   = 10;                   % show figure for average fluorescence
-Par.Debug.DeltaFOverFigNum  = 20;                   % show figure for average fluorescence
+Par.Debug.ArtifactFigNum    = 20;                   % show figure for artifact fluorescence
+Par.Debug.DeltaFOverFigNum  = 30;                   % show figure for df/f fluorescence
 
 
 %%%%%%%%%%%%%%%%%%%%%%
@@ -91,6 +96,7 @@ Par.DMB                     = TPA_DataManagerBehavior(); Par.DMB.DecimationFacto
 Par.DMJ                     = TPA_DataManagerJaaba();
 Par.DMC                     = TPA_DataManagerCalcium();
 Par.DME                     = TPA_DataManagerElectroPhys();
+%Par.TPED                    = TPA_TwoPhotonEventDetect();
 
 % management of ROIs and Events
 Par.roiCount                = 0;
@@ -124,25 +130,38 @@ Par.Roi.ImposeAverageType        = true;        % override individual ROI types 
 Par.Roi.OrthRoiWidthPix          = 2;           % OrthRoiWidthPix*2+1 will be the orthogonal line width
 Par.Roi.AverageRadius            = 1;           % how many pixels to average for big ROI
 Par.Roi.MaxMovementRadius        = 3;           % max distance from ROI line that searched for maximu fluorescence
-                                            % accounts for dendrites max distance movements
+                                                % accounts for dendrites max distance movements
                                             
 Par.Roi.MaxNum                  = 256;          % max number of ROIs allowed                                            
 Par.Roi.AverageOptions          = fieldnames(Par.ROI_AVERAGE_TYPES);
 Par.Roi.TmpData                 = [];         % is used as temp data holder during average calculations
 Par.DataRange                   = [0 1000];         % data range for display images
-Par.Roi.CellPartOptions         = fieldnames(Par.ROI_CELLPART_TYPES);
+
+% init names
+if exist('TPA_RoiNames.xml','file')
+    roiNameStr                  = xml_read('TPA_RoiNames.xml');
+else
+    roiNameStr                  = Par.ROI_CELLPART_TYPES;
+end
+Par.Roi.CellPartOptions         = fieldnames(roiNameStr);
+
+%%%%%%%%%%%%%%%%%%%%%%
+% ROI Artifact remove params
+%%%%%%%%%%%%%%%%%%%%%%
+Par.Roi.ArtifactCorrected       = false;    % designates if artifact correction is already done
+Par.Roi.ArtifactType            = Par.ROI_ARTIFACT_TYPES.NONE;
 
 
 %%%%%%%%%%%%%%%%%%%%%%
 % ROI Processing params
 %%%%%%%%%%%%%%%%%%%%%%
+Par.Roi.MinFluorescentLevel     = 20;       % system dependent - minimal flurescence on image data
 Par.Roi.ProcessType             = Par.ROI_DELTAFOVERF_TYPES.MEAN;     % how to proceess ROI : dF/F, Konnerth,... (see TOA_ProcessingROI.m) 
 Par.Roi.TimeFilterType          = 0;        % Time data smoothing, 0 -none
 Par.Roi.BaseLineType            = 0;		% Parameter controls Baseline computation (Mean Substraction)
 Par.Roi.ImageNormType           = 0;		% Parameter controls  : Image normalization (dF/F)
 Par.Roi.PreEmphType             = 11;       % Parameter controls emphasise of peak values in the data and NeuroPhil substraction 0-none, 3-factor 2
-Par.dFFRange                    = [-0.3 4]; % range of dF/F data for display
-Par.ArtifactCorrected           = false;    % designates if artifact correction is already done
+Par.Roi.dFFRange                = [-0.3 4]; % range of dF/F data for display
 
 % roi auto detect manager
 %Par.DMROIAD                     = TPA_ManageRoiAutodetect();

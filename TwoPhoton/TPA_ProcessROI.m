@@ -11,6 +11,7 @@ function [Par,StrROI] = TPA_ProcessROI(Par,StrROI,FigNum)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 21.19 08.12.15 UD     Support dF/F with small bias
 % 17.09 07.04.14 UD     Support different dF/F
 % 12.01 14.09.13 UD     Support Z stack
 % 11.06 06.08.13 UD 	support two channel processing
@@ -52,7 +53,7 @@ DTP_ManageText([], sprintf('ROI Process : Started ...'),  'I' ,0), tic;
 for k = 1:numROI,
     
     % Processing works on columns
-    meanROI             = StrROI{k}.meanROI;
+    meanROI                 = StrROI{k}.meanROI;
 
     % compute dF/F
      [Par,procROI,baselineROI]       = local_ProcessingROI(Par,meanROI,0);
@@ -85,7 +86,7 @@ end;
 
 
 % figure(FigNum),set(gcf,'Tag','AnalysisROI'),clf;
-% imagesc(procROI',Par.dFFRange), colorbar; colormap(gray);
+% imagesc(procROI',Par.Roi.dFFRange), colorbar; colormap(gray);
 % hold on
 % for k = 1:numROI,
 %     text(10,namePos(k),StrROI{k}.Name,'color','y')
@@ -203,6 +204,13 @@ switch Par.Roi.ProcessType,
         RoiNorm        = abs(RoiBL); % in case if BL is negative
         RoiData        = (RoiData - RoiBL)./(RoiNorm+eps);
         
+        
+     case Par.ROI_DELTAFOVERF_TYPES.MIN10BIAS, %'dF/F F - 10% min + bias',
+        Par.Roi.BaseLineType = 5;
+        [Par,RoiBL]    = local_BaseLine(Par,RoiData);         
+        %[Par,RoiNorm]  = local_Normalization(Par,RoiData);
+        RoiBL          = max(0,RoiBL); % in case if BL is negative
+        RoiData        = (RoiData - RoiBL)./(RoiBL + Par.Roi.MinFluorescentLevel);
 
         
         

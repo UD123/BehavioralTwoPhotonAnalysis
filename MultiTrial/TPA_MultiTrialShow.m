@@ -129,7 +129,7 @@ nameRefROI          = dbROI{s,3}; %namesROI(s,:);
 
 figure(FigNum),set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none');
 procROI             = []; trialCount = 0;
-trialSkip           = max(Par.dFFRange)/2;
+trialSkip           = max(Par.Roi.dFFRange)/2;
 
 for p = 1:size(dbROI,1),
     
@@ -191,7 +191,7 @@ ax     = zeros(3,numROI);
 for k = 1:numROI,
     %subplot(numROI,1,k),
     figure(FigNum + k),set(gcf,'Tag','AnalysisROI'),clf;
-    subplot(7,1,[1 4]),imagesc(timeImage,1:size(strROI{k}.procROI,1),strROI{k}.procROI,Par.dFFRange), %colorbar;
+    subplot(7,1,[1 4]),imagesc(timeImage,1:size(strROI{k}.procROI,1),strROI{k}.procROI,Par.Roi.dFFRange), %colorbar;
     colorbar('NorthOutside')
     hold on;
     hcross(k) = plot([0 0],[0 0],'color','k','LineStyle','-.','LineWidth',2);
@@ -211,7 +211,7 @@ for k = 1:numROI,
     subplot(7,1,[7]),
     hRoiLine(k) = plot(timeImage, strROI{k}.procROI(1,:)); hold on;
     hDetect(k)  = plot(timeImage(1), strROI{k}.procROI(1,1),'.k','MarkerSize',14);
-    ylim(Par.dFFRange)
+    ylim(Par.Roi.dFFRange)
     ax(3,k) = gca;
 
     ylabel(sprintf('dF/F : %d',1)),

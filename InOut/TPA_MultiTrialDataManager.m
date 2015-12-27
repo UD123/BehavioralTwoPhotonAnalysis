@@ -8,6 +8,11 @@ classdef TPA_MultiTrialDataManager
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 21.16 28.11.15 UD     Events are vectors  - need to find when active  for alignment
+    % 21.14 24.11.15 UD     Remove detection of spikes
+    % 21.10 17.11.15 UD     Event data taken from other channel is fixed
+    % 21.08 03.11.15 UD     Support Events as class
+    % 21.06 10.10.15 UD     Integrating Event Detector
     % 20.07 27.05.15 UD     Fixing event multi index bug - check that events are not present
     % 20.04 17.05.15 UD     Event data is continuos
     % 19.28 28.04.15 UD     Fixing time when multiple Z-stacks are used
@@ -41,6 +46,7 @@ classdef TPA_MultiTrialDataManager
         % copy of the containers with file info
         DMB                 = [];   % behaivior
         DMT                 = [];   % two photon
+        TPED                = [];   % two photon df/f event detector
         
         % Time rescaling 
         Behavior_Resolution  = [1 1 1 1];  % init from outside according to the 
@@ -74,7 +80,6 @@ classdef TPA_MultiTrialDataManager
 
             
         end
-        % ---------------------------------------------
         
         % ==========================================
         function obj = Init(obj,Par)
@@ -84,11 +89,12 @@ classdef TPA_MultiTrialDataManager
             % Output:
             %     default values
             
-            if nargin < 1, error('Must have Par'); end;
+            if nargin < 2, error('Must have Par'); end;
             
             % manager copy
             obj.DMB                     = Par.DMB;
             obj.DMT                     = Par.DMT;
+            obj.TPED                    = TPA_TwoPhotonEventDetect();
             
             % resolution updates
             obj.Behavior_Resolution     = Par.DMB.Resolution;
@@ -111,8 +117,6 @@ classdef TPA_MultiTrialDataManager
             obj.TimeConvertFact         = round(obj.Behavior_Resolution(4)/obj.TwoPhoton_Resolution(4)*obj.TwoPhoton_SliceNum);   
             
         end
-        % ---------------------------------------------
-        
      
         % ==========================================
         function tcFact = GetTimeConvertFact(obj)
@@ -124,8 +128,6 @@ classdef TPA_MultiTrialDataManager
             
             tcFact = obj.TimeConvertFact;
         end
-        % ---------------------------------------------
-        
      
         % ==========================================
         function obj = SetTimeConvertFact(obj)
@@ -160,8 +162,6 @@ classdef TPA_MultiTrialDataManager
             obj.TimeConvertFact         = tcFact;
             obj.Behavior_Resolution(4)  = tcFact * obj.TwoPhoton_Resolution(4)*obj.TwoPhoton_SliceNum;
         end
-        % ---------------------------------------------
-        
         
         % ==========================================
         function [obj,IsOK] = CheckDataFromTrials(obj)
@@ -176,7 +176,7 @@ classdef TPA_MultiTrialDataManager
             %%%%%%%%%%%%%%%%%%%%%%
             % Do some data ready test
             %%%%%%%%%%%%%%%%%%%%%%
-            obj.DMT                 = obj.DMT.CheckData(false);     % important step to validate number of valid trials  
+            obj.DMT                 = obj.DMT.CheckData(true);     % important step to validate number of valid trials  
                                                                     % false means do not read dir again
             validTrialNum           = obj.DMT.RoiFileNum;           % only analysis data
             if validTrialNum < 1,
@@ -212,7 +212,6 @@ classdef TPA_MultiTrialDataManager
             
         
         end
-        % ---------------------------------------------
         
         % ==========================================
         function obj = LoadDataFromTrials(obj,Par)
@@ -275,22 +274,27 @@ classdef TPA_MultiTrialDataManager
                     end
 
                     % read the info
+                    eventFrameNum = obj.TwoPhoton_FrameNum * obj.TimeConvertFact;
                     for eInd = 1:numEvent,
                        obj.DbEventRowCount                = obj.DbEventRowCount + 1;
                        obj.DbEvent{obj.DbEventRowCount,1} = trialInd;
                        obj.DbEvent{obj.DbEventRowCount,2} = eInd;                   % event num
                        obj.DbEvent{obj.DbEventRowCount,3} = strEvent{eInd}.Name;      % name 
-                       if isfield(strEvent{eInd},'Data') && ~isempty(strEvent{eInd}.Data),
-                            eventData                     = strEvent{eInd}.Data(:,2); % rescale time
+                       if (isprop(strEvent{eInd},'Data') || isfield(strEvent{eInd},'Data')) && ~isempty(strEvent{eInd}.Data),
+                            eventData                     = strEvent{eInd}.Data(:,1); % rescale time
                        else
-                           eventData                      = zeros(2400,1); % NEED to know frameNum
+                            eventData                      = zeros(eventFrameNum,1); % NEED to know frameNum
+                            if (isprop(strEvent{eInd},'TimeInd') || isfield(strEvent{eInd},'TimeInd')) && ~isempty(strEvent{eInd}.TimeInd)                           
+                            eventData(strEvent{eInd}.TimeInd(1):strEvent{eInd}.TimeInd(2)) = 3;
+                            end
                        end
                        dataLen                            = size(eventData,1);
                        if dataLen > 10, eventData         = resample(double(eventData),1,obj.TimeConvertFact); end;
                        obj.DbEvent{obj.DbEventRowCount,4} = eventData; % rescale time
                        % seq num support
                        seqNum = 1;
-                       if isfield(strEvent{eInd},'SeqNum'), seqNum = strEvent{eInd}.SeqNum; end
+                       if (isprop(strEvent{eInd},'SeqNum') || isfield(strEvent{eInd},'SeqNum')), 
+                           seqNum = strEvent{eInd}.SeqNum; end
                        obj.DbEvent{obj.DbEventRowCount,5} = seqNum;
                     end
 %                     
@@ -307,8 +311,6 @@ classdef TPA_MultiTrialDataManager
             DTP_ManageText([], sprintf('Multi Trial : Database Ready.'),  'I' ,0);
 
         end
-        % ---------------------------------------------
-        
         
         % ==========================================
         function obj = LoadEventsFromQuery(obj,QueryTable)
@@ -383,8 +385,6 @@ classdef TPA_MultiTrialDataManager
             DTP_ManageText([], sprintf('Multi Trial : Query to Event Conversion Ready.'),  'I' ,0);
 
         end
-        % ---------------------------------------------
-        
         
         % ==========================================
         function RoiNames = GetRoiNames(obj)
@@ -401,7 +401,7 @@ classdef TPA_MultiTrialDataManager
             end
                 
         end
-        % ---------------------------------------------
+        
         % ==========================================
         function EventNames = GetEventNames(obj)
             % GetEventNames - extract unique names from ROI data
@@ -416,7 +416,6 @@ classdef TPA_MultiTrialDataManager
                 EventNames            = obj.UniqueEventNames;
             end
        end
-        % ---------------------------------------------
         
         % ==========================================
         function obj = CheckUniqueNames(obj)
@@ -434,9 +433,6 @@ classdef TPA_MultiTrialDataManager
             obj.UniqueRoiNames      = roiNames;  % contains roi names - unique
             obj.UniqueRoiNum        = length(roiNames);   % how many different ROI we have
         end        
-        % ---------------------------------------------
-        
-        
          
         % ==========================================
         function DataStr = TracesPerTrial(obj, TrialInd)
@@ -464,7 +460,7 @@ classdef TPA_MultiTrialDataManager
             DTP_ManageText([], sprintf('Multi Trial : Extraction of trial %d Ready.',TrialInd),  'I' ,0);
 
         end
-        % ---------------------------------------------
+        
         % ==========================================
         function DataStr = TracesPerRoi(obj, RoiName)
             % TracesPerRoi - extract all the traces per Roi
@@ -499,7 +495,6 @@ classdef TPA_MultiTrialDataManager
             DTP_ManageText([], sprintf('Multi Trial : Extraction of traces for %s is ready.',RoiName),  'I' ,0);
 
         end
-        % ---------------------------------------------
         
         % ==========================================
         function DataStr = TrialsPerEvent(obj, EventName)
@@ -535,8 +530,6 @@ classdef TPA_MultiTrialDataManager
             DTP_ManageText([], sprintf('Multi Trial : Extraction of trials per event %s is ready.',EventName),  'I' ,0);
 
         end
-        % ---------------------------------------------
-        
         
         % ==========================================
         function DataStr = TracesPerRoiEvent(obj, RoiName, EventName)
@@ -591,7 +584,6 @@ classdef TPA_MultiTrialDataManager
             DTP_ManageText([], sprintf('Multi Trial : Extraction of traces for ROI %s and Event %s is ready.',RoiName,EventName),  'I' ,0);
 
         end
-        % ---------------------------------------------
  
         % ==========================================
         function DataStr = TracePerEventTrial(obj, EventName, TrialInds)
@@ -632,10 +624,9 @@ classdef TPA_MultiTrialDataManager
             
             eventInd         = ismember([obj.DbEvent{:,1}],trialInd);    
             DataStr.Event    = obj.DbEvent(eventPos(trialInd),:);      % name + time
-            DTP_ManageText([], sprintf('Multi Trial : Extraction of traces per event %s is ready.',EventName),  'I' ,0);
+            %DTP_ManageText([], sprintf('Multi Trial : Extraction of traces per event %s is ready.',EventName),  'I' ,0);
 
         end
-        % ---------------------------------------------
           
         % ==========================================
         function DataStr = TracePerEventRoiTrial(obj, EventName, RoiInds, TrialInds)
@@ -703,10 +694,9 @@ classdef TPA_MultiTrialDataManager
             %[c,ia,evntInd]  = intersect(roiInd,[obj.DbEvent{:,1}]);
             DataStr.Roi      = obj.DbROI(roiPos(trialBoolRoi),:);      % trial num + dFF
             DataStr.Event    = obj.DbEvent(eventPos(trialBoolEvent),:);      % name + time
-            DTP_ManageText([], sprintf('Multi Trial : Extraction of traces per event %s is ready.',EventName),  'I' ,0);
+            %DTP_ManageText([], sprintf('Multi Trial : Extraction of traces per event %s is ready.',EventName),  'I' ,0);
 
         end
-        % ---------------------------------------------
 
         % ==========================================
         function DataStr = TraceAlignedPerEventRoiTrial(obj, EventName, RoiInds, TrialInds)
@@ -790,8 +780,17 @@ classdef TPA_MultiTrialDataManager
                 if isempty(iE), continue; end
                 iE      = iE(1); % The first one only
                 tEvent  = DataStr.Event{iE,4};
-                tDelta  = round(frameNum/2) - tEvent(1); % delata move to the middle
-                tEvent  = tEvent + tDelta; % move to the middle
+                % check if a vector : new event format
+                if numel(tEvent) > 2,  activeEventInd = find(tEvent>0.3); end;
+                if numel(tEvent) == 2, % old format
+                    activeEventInd = tEvent(1);  tEvent = zeros(frameNum,1) ; tEvent(activeEventInd) = 1;
+                end;
+                if isempty(activeEventInd),
+                    DTP_ManageText([], sprintf('Multi Trial : Event %s Problem.',EventName),  'E' ,0);
+                    continue;
+                end
+                tDelta  = round(frameNum/2) - activeEventInd(1); % delata move to the middle
+                tEvent  = circshift(tEvent, [tDelta 1]); % move to the middle
                 DataStr.Event{iE,4} = tEvent;
                 
                 % for all ROIs
@@ -811,8 +810,6 @@ classdef TPA_MultiTrialDataManager
             DTP_ManageText([], sprintf('Multi Trial : Extraction of traces aligned per event %s is ready.',EventName),  'I' ,0);
 
         end
-        % ---------------------------------------------
-        
 
         % ==========================================
         function DataStr = TraceAlignedPerRoiEventTrial(obj, RoiName, EventInds, TrialInds)
@@ -913,8 +910,6 @@ classdef TPA_MultiTrialDataManager
             DTP_ManageText([], sprintf('Multi Trial : Extraction of traces aligned per event %s is ready.',EventName),  'I' ,0);
 
         end
-        % ---------------------------------------------
-        
        
         % ==========================================
         function [obj, DataStr] = ComputeSpikes(obj, DataStr)
@@ -934,7 +929,7 @@ classdef TPA_MultiTrialDataManager
             
             % estimate mean and threshold
             frameNum10          = ceil(frameNum/10); % 10 percent
-            Par                 = [];
+            %Par                 = [];
             for k = 1:traceNum,
                 
                 dffData             = DataStr.Roi{k,4};  
@@ -947,7 +942,8 @@ classdef TPA_MultiTrialDataManager
                 dffData             = dffData - dffDataAv;
                 
                 % filter and find spikes
-                [Par,dffSpike]       = TPA_FastEventDetect(Par,dffData,0);                
+                %[Par,dffSpike]       = TPA_FastEventDetect(Par,dffData,0);                
+                [obj.TPED,dffSpike]       = FastEventDetect(obj.TPED,dffData,0);                
                 
                 
 %                 [dffS,dffI]         = sort(dffData,'ascend');
@@ -973,9 +969,6 @@ classdef TPA_MultiTrialDataManager
 
          
         end
-        % ---------------------------------------------
-
-        
         
         % ==========================================
         function obj = TestLoad(obj, testType)
@@ -1025,7 +1018,6 @@ classdef TPA_MultiTrialDataManager
             
          
         end
-        % ---------------------------------------------
     
         % ==========================================
         function obj = TestDataExtract(obj)
@@ -1053,7 +1045,6 @@ classdef TPA_MultiTrialDataManager
             
          
         end
-        % ---------------------------------------------
         
         
     end% methods

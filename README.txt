@@ -30,7 +30,30 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Ver 	Date  		Who 	What
 %==================================================
-% 20.10 24.07.15    UD  Merging
+% 21.21 15.12.15    UD  	Integrating with Previous version of the Prarie Stimulus load. Fixes in spike display. 
+% 21.20 10.12.15    UD  	fixing bugs liora. 
+% 21.19 08.12.15    UD  	PSTH analysis bug fixing. Adding dF/F with bias. 
+% 21.18 01.12.15    UD  	Testing with Liora
+% 21.17 20.11.15    UD  	Bugs solving - Jackie
+% 21.16 26.11.15    UD  	z-stack fixes. recheck ROIs
+% 21.15 24.11.15    UD  	Fixing ROI assign bug
+% 21.14 24.11.15    UD  	Event Order additions. MTExplorer Config Spike detect.
+% 21.13 24.11.15    UD  	Tool for ROI movement - rot and scale.
+% 21.12 18.11.15    UD  	Fixing prarie load.
+% 21.11 17.11.15    UD  	Comments on ROI naming.
+% 21.10 10.11.15    UD  	Fixing empty prarie directories.
+% 21.09 03.11.15    UD  	Working with Liora on Bugs.
+% 21.08 20.10.15    UD  	Fixing bugs for prarie system.
+% 21.07 13.10.15    UD  	Event detection - fixes.
+% 21.06 10.10.15    UD  	Event detection - manula configuration for Itsik.
+% 21.05 08.09.15    UD  	Which score to import for Maria - predicted or manual.
+% 21.04 25.08.15    UD  	ROi artifact removal for Itsik.
+% 21.03 25.08.15    UD  	Shifting ROIs according to Z stack.
+% 21.02 18.08.15    UD  	Mergin event class to behavior editor from 2101. Moving files around.
+% 20.13 18.08.15    UD  	Categorization of the ROIs.
+% 20.12 28.07.15    UD  	Session : save / load experiment data. Cross probing in MultiTrial.
+% 20.11 28.07.15    UD  	Testing and doing video analysis. File CSV debug.
+% 20.10 24.07.15    UD  	Merging
 % 20.09 21.07.15	UD 	Skipping previous versions. MAC xls save resolve.
 % 20.08 15.07.15	UD 	Overlay TP on Video data.
 % 20.07 28.05.15	UD 	Fixing delay for continuous traces.

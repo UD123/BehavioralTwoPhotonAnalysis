@@ -12,6 +12,8 @@ function [Par] = TPA_MultiTrialEventAssignment(Par,FigNum)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 21.08 03.11.15 UD     Number of files 
+% 21.07 13.10.15 UD     Adjusting to EventManager  and ValidTrials according to number of BDA files
 % 20.05 19.05.15 UD     Use VideoFile numbers to create new events
 % 20.04 17.05.15 UD     Adjusted to support new event structure
 % 19.32 12.05.15 UD     Specific trials
@@ -29,22 +31,38 @@ if nargin < 2,  FigNum      = 11;                  end;
 %%%%%%%%%%%%%%%%%%%%%%
 % Load Trial
 %%%%%%%%%%%%%%%%%%%%%%
-%validTrialNum      = length(Par.DMB.EventFileNames);
-validTrialNum      = Par.DMB.VideoFileNum;
+Par.DMT                     = Par.DMT.CheckData(true);
+if isa(Par.DMT,'TPA_DataManagerPrarie'),
+    validTrialNum           = Par.DMT.ValidTrialNum;
+    Par                     = ExpandEvents(Par);
+else
+    validTrialNum      = length(Par.DMB.EventFileNames);
+end
+%validTrialNum      = Par.DMB.VideoFileNum;
 if validTrialNum < 1,
     DTP_ManageText([], sprintf('Multi Trial : No Behavior data in directory %s. Please check the folder. ',Par.DMB.EventDir),  'E' ,0);
     validTrialNum           = Par.DMT.ValidTrialNum;
     if validTrialNum < 1,
         DTP_ManageText([], sprintf('Multi Trial : No ROI data in folder %s. New event data will be created.',Par.DMT.RoiDir),  'E' ,0);
-        return
+        %return
     end
     Par             = ExpandEvents(Par);
     DTP_ManageText([], sprintf('Multi Trial : Manual Events will be created in folder %s. ',Par.DMB.EventDir),  'W' ,0);
+    validTrialNum   = Par.DMB.EventFileNum;
 
 else
     DTP_ManageText([], sprintf('Multi Trial : Found %d Events Analysis files. ',validTrialNum),  'I' ,0);
 end
 
+%%%%%%%%%%%%%%%%%%%%%%
+% Guess numbmer of frames in Behavioral data
+%%%%%%%%%%%%%%%%%%%%%%
+maxBehaveFrameNum       = 2400;
+% detect Prarie experiment
+if isa(Par.DMT,'TPA_DataManagerPrarie'),
+    maxBehaveFrameNum = size(Par.DMT.VideoFileNames,1);
+end
+DTP_ManageText([], sprintf('Multi Trial : Found %d behavioral frames. ',maxBehaveFrameNum),  'I' ,0);
 
 
 %%%%%%%%%%%%%%%%%%%%%%
@@ -75,6 +93,10 @@ if numel(newEventFrameNum) ~= 2,
     errordlg('You must provide two frame numbers for event start and duration')
     return
 end
+if sum(newEventFrameNum) > maxBehaveFrameNum,
+    errordlg('Event frame numbers exceed max number of valid frames %d',maxBehaveFrameNum)
+    return
+end
 if numel(newEventTrialInd) < 1,
     errordlg('You must provide number of trial indexes')
     return
@@ -91,7 +113,7 @@ end
 eventLast            = TPA_EventManager();
 
 % prepare ROI prototype 
-eventLast.Type        = eventLast.ROI_TYPES_RECT; % ROI_TYPES.RECT should be
+eventLast.Type        = eventLast.ROI_TYPES.RECT; % ROI_TYPES.RECT should be
 %eventLast.Active      = true;   % designates if this pointer structure is in use
 %eventLast.NameShow    = false;       % manage show name
 %eventLast.zInd        = 1;           % location in Z stack
@@ -104,8 +126,8 @@ eventLast.Name        = newEventName;
 eventLast.tInd        = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
 eventLast.SeqNum      = 1;           % designates Event number
 eventLast.Color       = [0 1 0];           % designates Event color
-eventLast.Data        = zeros(2000,2);        
-eventLast.Data(eventLast.tInd(1):eventLast.tInd(2)) = 50; % no reason               
+eventLast.Data        = zeros(maxBehaveFrameNum,2);        
+eventLast.Data(eventLast.tInd(1):eventLast.tInd(2),:) = 50; % no reason               
                 
 %%%%%%%%%%%%%%%%%%%%%%
 % Run over all files/trials and load the Analysis data
@@ -137,7 +159,8 @@ function Par = ExpandEvents(Par)
 validTrialNum           = Par.DMT.RoiFileNum;
 Par.DMB.EventDir        = Par.DMT.RoiDir;
 Par.DMB.EventFileNum    = validTrialNum;
-for m = 1:validTrialNum
+for m = 1:validTrialNum,
+    if isempty(Par.DMT.RoiFileNames{m}), continue; end;
     Par.DMB.EventFileNames{m}  = sprintf('BDA_%s',Par.DMT.RoiFileNames{m}(5:end));
 end
 return

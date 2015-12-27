@@ -13,6 +13,8 @@ function [Par,dbROI] = TPA_MultiTrialRoiAlignment(Par,FigNum)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 21.11 17.11.15 UD     Selecting a subset of ROIs
+% 21.08 20.10.15 UD     Selecting which video file to write for Prarie experiment (Janelia is not tested).
 % 19.23 17.02.15 UD     Assign all files without bug fix.
 % 17.08 05.03.14 UD     Extend to all video files. Fixing bug in old index file generation - inpolygon must be run again
 % 17.02 10.03.14 UD     Created
@@ -37,11 +39,15 @@ dbRoiRowCount       = 0;
 %bhSize          = Par.DMB.VideoSideSize;
 %timeConvertFact      = Par.DMB.Resolution(4)/Par.DMT.Resolution(4);
                 
+% check for updates                
+Par.DMT                 = Par.DMT.CheckData(true);
+
                 
 %%%%%%%%%%%%%%%%%%%%%%
 % Run over all files/trials and load the Analysis data
 %%%%%%%%%%%%%%%%%%%%%%
-validTrialNum           = length(Par.DMT.RoiFileNames);
+vBool                   = cellfun(@numel,Par.DMT.RoiFileNames) > 0;
+validTrialNum           = sum(vBool);
 if validTrialNum < 1,
     DTP_ManageText([], sprintf('Multi Trial : No TwoPhoton Analysis data in directory %s. Please check the folder or run Data Check',Par.DMT.RoiDir),  'E' ,0);
     return
@@ -50,11 +56,12 @@ end
 %%%%%%%%%%%%%%%%%%%%%%
 % Select which trial
 %%%%%%%%%%%%%%%%%%%%%%
-
-[s,ok] = listdlg('PromptString','Select Trial to Assign :','ListString',Par.DMT.RoiFileNames,'SelectionMode','multiple');
+validInd                = find(vBool);
+roiNameList             = Par.DMT.RoiFileNames(validInd);
+[s,ok] = listdlg('PromptString','Select Trial with ROIs :','ListString',roiNameList,'SelectionMode','multiple','ListSize',[300 500]);
 if ~ok, return; end;
 
-selecteInd          = s;
+selecteInd          = validInd(s);
 selectedTrialNum    = length(s);     
 
 % for ind fix
@@ -111,17 +118,35 @@ for m = 1:length(ia),
 end
 numROI              = length(strROI);
 
+
+%%%%%%%%%%%%%%%%%%%%%%
+% Select which trial to write
+%%%%%%%%%%%%%%%%%%%%%%
+if isa(Par.DMT,'TPA_DataManagerPrarie')
+trialFileNames        = Par.DMT.VideoDir(:);
+else
+trialFileNames        = Par.DMT.VideoFileNames;
+end
+
+[s,ok] = listdlg('PromptString','Select Trial to Assign :','ListString',trialFileNames,'SelectionMode','multiple', 'ListSize',[300 500]);
+if ~ok, return; end;
+
+selecteInd          = s;
+selectedTrialNum    = length(s);     
+
+
 %%%%%%%%%%%%%%%%%%%%%%
 % Write data back
 %%%%%%%%%%%%%%%%%%%%%%
 
-for trialInd = 1:validTrialNum,
+for m = 1:selectedTrialNum,
     
+        trialInd    = selecteInd(m);      
         Par.DMT     = Par.DMT.SaveAnalysisData(trialInd,'strROI',strROI);
 
 end
 
-DTP_ManageText([], sprintf('Multi Trial : %d ROIs  are aligned to %d trial files',numROI,validTrialNum),  'I' ,0);
+DTP_ManageText([], sprintf('Multi Trial : %d ROIs  are aligned to %d trial files',numROI,selectedTrialNum),  'I' ,0);
 
 return
 

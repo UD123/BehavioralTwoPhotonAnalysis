@@ -23,6 +23,7 @@ classdef TPA_DataManagerJaaba
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 21.05 08.09.15 UD     Import Jaaba scores from Jab file - manual scores.   
     % 20.05 19.05.15 UD     Import Jaaba with EventManager Class.   
     % 19.08 07.10.14 UD     For ronen - do not number names.   
     % 19.06 21.09.14 UD     Import movie_comb.avi files.   
@@ -39,7 +40,7 @@ classdef TPA_DataManagerJaaba
     properties
         VideoDir                     = '';           % directory of the Front and Side view image Data
         EventDir                     = '';           % directory where the user Analysis data is stored
-        JaabaDir                       = '';            % directory where the user Jaaba data is stored (usually = BehaviorDir)
+        JaabaDir                       = '';         % directory where the user Jaaba data is stored (usually = BehaviorDir)
 
         VideoFileNum                = 0;             % number of trials (avi movies) in Video/Image Dir
         VideoFileNames              = {};            % file names in the Image directory
@@ -62,6 +63,11 @@ classdef TPA_DataManagerJaaba
         
         % Excel import support
         JaabaData                   = {};               % contains excel data
+        
+        % Jab file import export
+        JabFileName                 = '';               % name of the jab file
+        JabEventLabels              = [];               % contains jab file labels
+        JabEventNames               = {};               % event names
 
         
 %         % common info
@@ -248,6 +254,7 @@ classdef TPA_DataManagerJaaba
                 DTP_ManageText([], showTxt, 'E' ,0) ;
                 return;
             end;
+            
             if obj.JaabaDirNum < currTrial,
                 showTxt     = sprintf('Jaaba : Requested trial %d exceeds Jaaba directory content.',currTrial);
                 DTP_ManageText([], showTxt, 'E' ,0) ;
@@ -295,6 +302,134 @@ classdef TPA_DataManagerJaaba
         end
         % ---------------------------------------------
 
+        % ==========================================
+        function obj = SelectJabFile(obj,fileName)
+            % SelectJabFile - loads Jab File manual score data
+            % Input:
+            %     fileName - string path to the directory and file
+            % Output:
+            %     JaabaFileNames - cell array of names of the files
+            
+            if nargin < 2, fileName = fullfile(obj.EventDir,obj.JabFileName); end;
+            
+            % there was an error during load
+            if ~exist(fileName,'file'),
+                showTxt     = sprintf('Jaaba : Can not find jab file %s.',fileName);
+                DTP_ManageText([], showTxt, 'E' ,0) ;
+                return;
+            end;
+            try 
+                jb  = load(fileName,'-mat');            
+            catch merr
+                DTP_ManageText([], merr.message, 'E' ,0) ;
+                return
+            end
+            
+            if ~isa(jb.x,'Macguffin')
+                DTP_ManageText([], 'Not a Macguffin class', 'E' ,0) ;
+            end
+            
+            trialNum        = length(jb.x.labels);
+            if trialNum < 1,
+                showTxt = sprintf('Can not find Jab labels in %s. Check the Jaaba manual results.',fileName);
+                DTP_ManageText([], showTxt, 'E' ,0)   ;             
+                return
+            end;
+            classNum        = length(jb.x.behaviors.names);
+                        
+            
+            % output
+            obj.JaabaDir              = dirPath;
+            obj.JaabaDirNum           = trialNum;   % 
+            obj.JaabaFileClassNum     = classNum;   % classifier number
+            %obj.JaabaFileNames        = fileNamesC; % 2D
+            
+            obj.JabEventNames         = jb.x.behaviors.names;
+            obj.JabEventLabels        = jb.x.labels;
+            
+            obj.VideoFileNum          = trialNum;             % number of trials (avi movies) in Video/Image Dir
+            obj.VideoFileNames        = '';                  % file names in the Image directory
+            
+            
+            DTP_ManageText([], 'Jaaba : jab data file has been read successfully', 'I' ,0)   ;             
+            
+        end
+        % ---------------------------------------------
+        
+        
+        % ==========================================
+        function [obj, eventData] = LoadJabData(obj,currTrial)
+            % LoadJabData - loads manual score data from jab file
+            % Input:
+            %     currTrial - integer that specifies trial to load
+            % Output:
+            %     eventData   - roiLast cell array  
+            
+            if nargin < 2, currTrial = 1; end;
+            eventData       = {};
+            roiLast         = TPA_EventManager();
+            
+            
+            % there was an error during load
+            if obj.JaabaDirNum < 1,
+                showTxt     = sprintf('Jaaba : Can not find valid trials.');
+                DTP_ManageText([], showTxt, 'E' ,0) ;
+                return;
+            end;
+            
+            if obj.JaabaDirNum < currTrial,
+                showTxt     = sprintf('Jaaba : Requested trial %d exceeds Jaaba trial content.',currTrial);
+                DTP_ManageText([], showTxt, 'E' ,0) ;
+                return;
+            end
+            
+            % current labels
+            currLabels      = obj.JabEventLabels(currTrial);
+            eventNum        = length(currLabels.names);
+            dataLen         = currLabels.imp_t1s{1}(1);
+            if eventNum < 1,
+                DTP_ManageText([], sprintf('Jaaba : Trial %d - no maual class data.',currTrial), 'W' ,0)   ;                     
+            end
+            
+            
+            % get data from Jabba scores
+            eventCount       = 0;
+            for m = 1:eventNum,
+                
+                
+                
+                % start and end of the events - could be multiple
+                startInd        = currLabels.t0s{1}(m);
+                stopInd         = currLabels.t1s{1}(m);
+                
+                % detrmine if the length has minimal distance
+                eventDuration       = stopInd - startInd;
+                if any(eventDuration < 0),
+                    DTP_ManageText([], sprintf('Jaaba : Trial %d (%d)- can not determine event durations.',currTrial,m), 'E' ,0)   ;                     
+                    continue;
+                end
+
+                ii                  = 1;
+                pos                 = [startInd 50 eventDuration 150];
+                xy                  = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
+                roiLast.Color       = rand(1,3);   % generate colors
+                roiLast.Name        = sprintf('%s:%02d',currLabels.names{m},m); %jabData{m}.Name;
+                roiLast.SeqNum      = m;
+                roiLast.tInd        = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+                roiLast.yInd        = round([min(xy(:,2)) max(xy(:,2))]);  % time/frame indices
+                roiLast.Data        = zeros(dataLen,1);
+                roiLast.Data(startInd(ii):stopInd(ii))  = 1;
+
+                % save
+                eventCount           = eventCount + 1;
+                eventData{eventCount} = roiLast;
+            end
+
+            DTP_ManageText([], sprintf('Jaaba : Converting Jaaba to %d Events : Done',classNum), 'I' ,0)   ;             
+        end
+        % ---------------------------------------------
+        
+        
         % ==========================================
         function [obj, eventData] = ConvertToAnalysis(obj,jabData)
             % ConvertToAnalysis - converts Jaaba data to Behavioral event format.
@@ -473,7 +608,6 @@ classdef TPA_DataManagerJaaba
             
         end
         % ---------------------------------------------
-        
 
         % ==========================================
         function obj = LoadJaabaExcelDataManual(obj,filePath)
@@ -563,8 +697,6 @@ classdef TPA_DataManagerJaaba
         end
         % ---------------------------------------------
         
-        
-        
         % ==========================================
         function [obj, eventData] = ConvertExcelToAnalysis(obj,currTrial)
             % ConvertExcelToAnalysis - converts Jaaba Excel data to Behavioral event format.
@@ -642,7 +774,6 @@ classdef TPA_DataManagerJaaba
             DTP_ManageText([], sprintf('Jaaba : Converting Jaaba Trial %d with %d Events : Done',currTrial,eventCount), 'I' ,0)   ;             
         end
         % ---------------------------------------------
-        
         
         % ==========================================
         function [obj, CheckOK] = CheckData(obj)

@@ -70,6 +70,14 @@ for k = 1:numROI,
     % preproces ROI - filter using averaging with certain radius
     pixInd           = StrROI{k}.Ind; % BUG in old files
     zInd             = StrROI{k}.zInd; % whic Z it belongs
+    if isempty(pixInd),
+        DTP_ManageText([], sprintf('ROI %s : No region is found',StrROI{k}.Name),  'W' ,0);
+        continue;
+    end
+    if zInd < 1 || zInd > nZ,
+        DTP_ManageText([], sprintf('ROI %s : Does not belong to the particular z-stack',StrROI{k}.Name),  'W' ,0);
+        continue;
+    end
     
     % define mask = old code compatability
     imMask          = false(nR,nC);
@@ -115,7 +123,7 @@ for k = 1:numROI,
     
 end;
 %Par.RoiAverageType         = saveRoiAverageType;
-
+Par.Roi.ArtifactCorrected = false;
 Par.Roi.TmpData         = []; % cleanup
 % output
 % DataROI     = meanROI;
@@ -135,8 +143,12 @@ for k = 2:numROI,
 end;
 
 
-figure(FigNum),set(gcf,'Tag','AnalysisROI'),clf;
-imagesc(meanROI',Par.DataRange), colorbar; colormap(gray);
+figure(FigNum),set(gcf,'Tag','AnalysisROI'),clf; colordef(gcf,'none'),
+if any(mean(meanROI) > Par.DataRange(2)),
+    imagesc(meanROI'), colorbar; colormap(gray); % when the brightness is out of range
+else
+    imagesc(meanROI',Par.DataRange), colorbar; colormap(gray);
+end
 hold on
 for k = 1:numROI,
     text(10,namePos(k),StrROI{k}.Name,'color','y')

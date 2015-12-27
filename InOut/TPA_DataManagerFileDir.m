@@ -234,6 +234,7 @@ classdef TPA_DataManagerFileDir
                 columnData(1:fileNum,4) = obj.DMT.RoiFileNames;
                 
             else
+                columnData(1,3) = {obj.DMT.RoiDir};
                 DTP_ManageText([], 'DataCSV : No Two Photon analysis data is saved to CSV', 'W' ,0);
             end
             maxLineNum = max(maxLineNum,fileNum);
@@ -272,8 +273,8 @@ classdef TPA_DataManagerFileDir
                 
                 columnData(1:fileNum,9) = repmat({obj.DMB.EventDir},fileNum,1);
                 columnData(1:fileNum,10) = reshape(obj.DMB.EventFileNames,[],1);
-                
             else
+                columnData(1,9) = {obj.DMB.EventDir}; % write at least one
                 DTP_ManageText([], 'DataCSV : No Behavior analysis data is saved to CSV', 'W' ,0);
             end
             maxLineNum = max(maxLineNum,fileNum);
@@ -567,10 +568,10 @@ classdef TPA_DataManagerFileDir
             columnNames            = T.Properties.VariableNames;
             %[ndata, txt, allData]  = xlsread(loadFileName, 'DataDir');
             % clean
-            %allData(cellfun(@(x) isempty(x) || isnumeric(x) || isnan(x),allData)) = {''};
-%             a = cellfun(@(x) isnan(x),allData, 'UniformOutput', false);
-%             b = cellfun(@(x) any(x),a);
-%             allData(b)              = {''};
+            %allData(cellfun(@(x) isempty(x) | isnumeric(x) | isnan(x),allData),'UniformOutput',false) = {''};
+            a = cellfun(@(x) isempty(x) | isnumeric(x) | isnan(x),allData, 'UniformOutput', false);
+            b = cellfun(@(x) any(x),a);
+            allData(b)              = {''};
             
             colNum                  = size(allData,2);
             for dInd = 1:2:colNum,
@@ -692,7 +693,9 @@ classdef TPA_DataManagerFileDir
             
             % Two Photon
             Par.DMT.VideoDir                    = obj.DMT.VideoDir;            % directory of the Cell image Data
+            if ~isempty(obj.DMT.RoiDir),
             Par.DMT.RoiDir                      = obj.DMT.RoiDir;            % directory where the user Analysis data is stored
+            end
             Par.DMT.VideoFileNum                = obj.DMT.VideoFileNum;             % number of trials (tiff movies) in Video/Image Dir
             Par.DMT.VideoFileNames              = obj.DMT.VideoFileNames;            % file names in the cell Image directory
             Par.DMT.RoiFileNum                  = obj.DMT.RoiFileNum;                % numer of Analysis mat files
@@ -701,7 +704,9 @@ classdef TPA_DataManagerFileDir
             
             % Behave
             Par.DMB.VideoDir                    = obj.DMB.VideoDir;           % directory of the Front and Side view image Data
+            if ~isempty(obj.DMB.EventDir),
             Par.DMB.EventDir                    = obj.DMB.EventDir;           % directory where the user Analysis data is stored
+            end
             Par.DMB.VideoFrontFileNum           = obj.DMB.VideoFrontFileNum;             % number of trials (tiff movies) in Behavior/Front Dir
             Par.DMB.VideoFrontFileNames         = obj.DMB.VideoFrontFileNames;            % front video file names in the Behavior directory
             Par.DMB.VideoSideFileNum            = obj.DMB.VideoSideFileNum;             % number of trials (tiff movies) in Behavior/Side Dir

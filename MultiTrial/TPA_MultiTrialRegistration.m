@@ -12,6 +12,7 @@ function Par = TPA_MultiTrialRegistration(Par,FigNum)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 21.10 10.11.15 UD     Do not check directories again
 % 19.19 11.01.15 UD     Fixing bug with shifts
 % 19.16 30.12.14 UD     Multi Dim data support
 % 17.01 08.03.14 UD     Created
@@ -35,7 +36,7 @@ meanData                = [];
 %%%%%%%%%%%%%%%%%%%%%%
 % Run over all files/trials and load the Analysis data
 %%%%%%%%%%%%%%%%%%%%%%
-Par.DMT                 = Par.DMT.CheckData();    % important step to validate number of valid trials    
+Par.DMT                 = Par.DMT.CheckData(false);    % do not check dirs - use user selection   
 validTrialNum           = Par.DMT.ValidTrialNum;
 if validTrialNum < 1,
     DTP_ManageText([], sprintf('Multi Trial : Missing data in directory %s. Please check the folder or run Data Check',Par.DMT.RoiDir),  'E' ,0);

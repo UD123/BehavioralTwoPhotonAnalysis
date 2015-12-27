@@ -9,6 +9,9 @@ classdef TPA_MultiTrialGroupDetect
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 21.18 01.12.15 UD     Adding order matrix and more PSTH
+    % 21.14 24.11.15 UD     More order graphs
+    % 21.10 17.11.15 UD     Support new event structure
     % 19.30 07.05.15 UD     Delay map with time filtering
     % 19.22 12.02.15 UD     Delay map is created
     % 19.11 16.10.14 UD     Created
@@ -16,24 +19,11 @@ classdef TPA_MultiTrialGroupDetect
     
     properties
         
-        % containers of events and rois
-%         DbROI               = {};
-%         DbEvent             = {};
-%         AverDff             = [];   % average dF/F data
-        
-        % frame number in the data
-%        FrameNum            = 0;    % Two Photon and Behavior aligned
 
-%         % copy of the containers with file info
-%         DMB                 = [];   % behaivior
-%         DMT                 = [];   % two photon
+        % copy of the containers with file info
         MngrData            = [];   % db manager
+        FrameRange          = [0 100]; % for user to remember
                
-        % group name pattern
-%         GroupName           = '';               % how this called
-%         GroupFilePattern    = 'GBT_*.mat';      % expected name for analysis
-%         GroupDir            = '';               % group location
-
         IsAligned           = false;   % align events or not
         
         % dff related
@@ -56,7 +46,6 @@ classdef TPA_MultiTrialGroupDetect
             % Output:
             %     default values
         end
-        % ---------------------------------------------
         
         % ==========================================
         function obj = Init(obj,Par)
@@ -76,8 +65,61 @@ classdef TPA_MultiTrialGroupDetect
             obj.MngrData                = obj.MngrData.Init(Par);
             
         end
-        % ---------------------------------------------
         
+        % ==========================================
+        function EventName = SelectEvent(obj,EventName)
+            % SelectEvent - selects event from DB or performs manual selection
+            % Input:
+            %    EventName        - name to select
+            % Output:
+            %    EventName   - manual selection
+            
+            if nargin < 2, EventName = ''; end; % manual selection
+            
+            if ~isempty(EventName), return; end;
+        
+            % select Events to Show
+            eventNames = obj.MngrData.UniqueEventNames;
+            [s,ok] = listdlg('PromptString','Select Event :','ListString',eventNames,'SelectionMode','single');
+            if ~ok, return; end;
+
+            % do analysis
+            EventName = eventNames{s};
+            
+        end
+
+        % ==========================================
+        function [obj, frameRange] = SelectFrameRange(obj, frameRange)
+            % SelectFrameRange - selects frame range for filtering
+            if nargin < 2, frameRange = obj.FrameRange; end;
+            
+            % of the ROI spike events
+            isOK                  = false; % support next level function
+            options.Resize        ='on';
+            options.WindowStyle   ='modal';
+            options.Interpreter   ='none';
+            prompt                = {'ROI Spike Event Start and Stop [Two Photon Frame Numbers]',...            
+                                    };
+            name                ='Add New Event to all trials:';
+            numlines            = 1;
+            defaultanswer       ={num2str(frameRange)};
+            answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
+            if isempty(answer), return; end;
+
+
+            % try to configure
+            frameRange          = str2num(answer{1});
+
+            % check
+            if numel(frameRange) ~= 2,
+                errordlg('You must provide two frame numbers for event start and stop')
+                return
+            end
+            frameRange(1)       = max(-500,min(1000,frameRange(1)));          
+            frameRange(2)       = max(-500,min(1000,frameRange(2)));          
+            obj.FrameRange      = frameRange;
+        
+        end
         
         % ==========================================
         function obj = LoadData(obj) 
@@ -93,9 +135,13 @@ classdef TPA_MultiTrialGroupDetect
             if ~IsOK, return; end
             obj.MngrData        = obj.MngrData.LoadDataFromTrials();
 
+            % init frame range
+            obj.FrameRange      = [-10 obj.MngrData.TwoPhoton_FrameNum];
+            
+            
 
         end
-        % ---------------------------------------------
+        
         % ==========================================
         function [obj, DataStr] = TraceTablePerRoiEvent(obj,RoiName,EventName,IsAligned) 
            % TraceRoiTablePerEvent - creates big table of all ROI and traces per specified event
@@ -145,7 +191,6 @@ classdef TPA_MultiTrialGroupDetect
             
 
         end
-        % ---------------------------------------------
  
         % ==========================================
         function [obj, DataStr] = OldTraceTablePerRoiEvent(obj,RoiName,EventName,IsAligned) 
@@ -200,7 +245,10 @@ classdef TPA_MultiTrialGroupDetect
             eventTimeArray      = zeros(2,traceNum);
             for m = 1:traceNum,
                 dffDataArray(:,m)   = dbROI{m,4};
-                eventTimeArray(:,m) = dbEvent{m,4}';    
+                ii = find(dbEvent{m,4}>0,1,'first');
+                if isempty(ii), continue; end;
+                eventTimeArray(1,m) = ii;    
+                eventTimeArray(2,m) = find(dbEvent{m,4}>0,1,'last');    
             end      
             
             % save
@@ -211,10 +259,8 @@ classdef TPA_MultiTrialGroupDetect
             DataStr.TraceInd    = [dbROI{:,1}];
 
         end
-        % ---------------------------------------------
          
-        
-        % ==========================================
+       % ==========================================
         function obj = ListMostActiveRoiPerEvent(obj, EventNames)
            % ListMostActiveRoiPerEvent - prints the list of ROIs that most active per given event 
            % measured by number of time Trace is above the threshold
@@ -223,13 +269,14 @@ classdef TPA_MultiTrialGroupDetect
             % Output:
             %    obj        - list of events 
             
-            if nargin < 2,   EventNames    = 'Grabm2 - 1'; end
+            if nargin < 2,   EventNames    = ''; end
+            eventNames    = SelectEvent(obj,EventNames);
             
             % params
             figNum       = 11;
             
             % check against all ROIs
-            eventNames    = EventNames;
+            %eventNames    = EventNames;
             eventNum      = length(eventNames);
             if eventNum < 1,
                  DTP_ManageText([], sprintf('Group : You need to supply event as cell array of strings.'), 'E' ,0)   ;
@@ -292,7 +339,6 @@ classdef TPA_MultiTrialGroupDetect
             set(gca,'ytick',1:eventNum,'yticklabel',eventNames)
          
         end
-        % ---------------------------------------------
 
         % ==========================================
         function obj = ListEarlyLateOntimeRoiPerEvent(obj, EventNames)
@@ -303,13 +349,14 @@ classdef TPA_MultiTrialGroupDetect
             % Output:
             %    obj        - list of events 
             
-            if nargin < 2,   EventNames    = 'Grabm2 - 1'; end
+            if nargin < 2,   EventNames    = ''; end
+            eventNames    = SelectEvent(obj,EventNames);
             
             % params
             figNum       = 11;
             
             % check against all ROIs
-            eventNames    = EventNames;
+            %eventNames    = EventNames;
             eventNum      = length(eventNames);
             if eventNum < 1,
                  DTP_ManageText([], sprintf('Group : You need to supply event as cell array of strings.'), 'E' ,0)   ;
@@ -414,8 +461,6 @@ classdef TPA_MultiTrialGroupDetect
             
          
         end
-        % ---------------------------------------------
- 
         
         % ==========================================
         function [obj, SpikeData] = OldDetectSpikes(obj, DffData)
@@ -461,21 +506,24 @@ classdef TPA_MultiTrialGroupDetect
 
          
         end
-        % ---------------------------------------------
 
         % ==========================================
-        function obj = ShowDelayMapPerEvent(obj, EventNames)
-           % ShowDelayMapPerEvent - detects ROI activity and shows all active ROIs for all trials
+        function [obj, DelayMap] = ComputeDelayMapPerEvent(obj, EventNames, FrameRange)
+           % ComputeDelayMapPerEvent - detects ROI activity and shows all active ROIs for all trials
            % delay betwen first activation time and fiven given event 
             % Input:
             %    EventNames - which event to show cell array of strings
             % Output:
-            %    obj        - image map 
+            %    DelayMap   - image map 
             
             if nargin < 2,   EventNames    = 'Grabm2 - 1'; end
+            if nargin < 3,   FrameRange    = [1 obj.MngrData.TwoPhoton_FrameNum]; end;
+
             
             % params
-            figNum       = 21;
+            figNum        = 21;
+            DelayMap      = [];
+            frameRange    = FrameRange;
             
             % check against all ROIs
             eventNames    = EventNames;
@@ -485,7 +533,7 @@ classdef TPA_MultiTrialGroupDetect
                  return
             end
             eventNum       = 1; % use only one
-            eId            = 1; % event id
+            %eId            = 1; % event id
             
             roiNames      = obj.MngrData.UniqueRoiNames;
             roiNum        = length(roiNames);
@@ -498,8 +546,7 @@ classdef TPA_MultiTrialGroupDetect
             frameNum                = 1;
             
             % ask fort frame range  
-            frameRange              = [1 obj.MngrData.TwoPhoton_FrameNum];
-            [obj, frameRange]       = SelectFrameRange(obj, frameRange);
+            %[obj, frameRange]       = SelectFrameRange(obj, frameRange);
             
             
             % start analysis
@@ -508,7 +555,7 @@ classdef TPA_MultiTrialGroupDetect
             % detect first time events
             %for eId = 1:eventNum,
             for rId = 1:roiNum,
-                [obj,dataStr]           = TraceTablePerRoiEvent(obj,roiNames{rId},eventNames{eId});  
+                [obj,dataStr]           = TraceTablePerRoiEvent(obj,roiNames{rId},eventNames);  
                 if isempty(dataStr),continue; end;
                 
                 
@@ -565,79 +612,278 @@ classdef TPA_MultiTrialGroupDetect
 
             end
             %end
-            % design colormap
-            if frameNum < 5, 
-                cmap    = hot(8); 
-            else
-                coolLen = -min(-1,min(delayMapTrialRoi(:)));
-                hotLen  = max(1,max(delayMapTrialRoi(:))); %frameNum - coolLen;
-                lenSum  = (coolLen + hotLen);
-                % map Nan to red
-                delayMapTrialRoi(isnan(delayMapTrialRoi)) = -(coolLen + 1);
-                coolLen = ceil(coolLen./lenSum*128);
-                hotLen  = ceil(hotLen./lenSum*128);
-                cmapH   = hot(hotLen);cmapC = bone(coolLen);
-                %cmapH   = summer(hotLen);cmapC = winter(coolLen);
-                %cmapH   = jet(hotLen);cmapC = jet(coolLen);
-                %cmap    = [cmapC(end:-1:1,:);[0 0 0];cmapH];
-                %cmap    = [cmapC;[0 0 0];cmapH(end:-1:1,:)];
-                cmap    = [[0.5 0.5 0.5];cmapC(end:-1:1,:);[0 0 0];cmapH];
-                %cmap    = [[1 0 0];cmapC;[1 1 1];cmapH(end:-1:1,:)];
-                %cmap    = [cmapH;[0 0 0];cmapC(end:-1:1,:)];
-                %cmap    = jet(64);
-                clims    = [-(coolLen + 1) hotLen];
+            
+            DelayMap        = delayMapTrialRoi;
+            
+         
+        end
+        
+        % ==========================================
+        function [obj, DelayMap] = ShowDelayMapPerEvent(obj, EventNames)
+           % ShowDelayMapPerEvent - detects ROI activity and shows all active ROIs for all trials
+           % delay betwen first activation time and fiven given event 
+            % Input:
+            %    EventNames - which event to show cell array of strings
+            % Output:
+            %    obj        - image map 
+            
+            if nargin < 2,   EventNames    = ''; end
+            eventName    = SelectEvent(obj,EventNames);
+            
+            % params
+            figNum        = 21;
+            DelayMap      = [];
+            
+            % check against all ROIs
+            %eventNames    = EventNames;
+            eventNum      = length(eventName);
+            if eventNum < 1,
+                 DTP_ManageText([], sprintf('Group : You need to supply event as cell array of strings.'), 'E' ,0)   ;
+                 return
             end
+            eventNum       = 1; % use only one
+            eId            = 1; % event id
+            
+            roiNames      = obj.MngrData.UniqueRoiNames;
+            roiNum        = length(roiNames);
+            if roiNum < 1,
+                 DTP_ManageText([], sprintf('Group : You need to initialize the database. Call obj.Init'), 'E' ,0)   ;
+                 return
+            end
+            % assume init has been done
+            trialNum                = obj.MngrData.ValidTrialNum;
+            frameNum                = 1;
+            
+            % ask fort frame range  
+            [obj, frameRange]       = SelectFrameRange(obj);
+            
+            % compute           
+            [obj, delayMapTrialRoi] = ComputeDelayMapPerEvent(obj, eventName, frameRange);
+            
+            %end
+            % design colormap
+%             if frameNum < 5, 
+%                 cmap    = hot(8); 
+%             else
+            coolLen = -min(-1,min(delayMapTrialRoi(:)));
+            hotLen  = max(1,max(delayMapTrialRoi(:))); %frameNum - coolLen;
+            lenSum  = (coolLen + hotLen);
+            % map Nan to red
+            delayMapTrialRoi(isnan(delayMapTrialRoi)) = -(coolLen + 1);
+            coolLen = ceil(coolLen./lenSum*128);
+            hotLen  = ceil(hotLen./lenSum*128);
+            cmapH   = hot(hotLen);cmapC = bone(coolLen);
+            %cmapH   = summer(hotLen);cmapC = winter(coolLen);
+            %cmapH   = jet(hotLen);cmapC = jet(coolLen);
+            %cmap    = [cmapC(end:-1:1,:);[0 0 0];cmapH];
+            %cmap    = [cmapC;[0 0 0];cmapH(end:-1:1,:)];
+            cmap    = [[0.5 0.5 0.5];cmapC(end:-1:1,:);[0 0 0];cmapH];
+            %cmap    = [[1 0 0];cmapC;[1 1 1];cmapH(end:-1:1,:)];
+            %cmap    = [cmapH;[0 0 0];cmapC(end:-1:1,:)];
+            %cmap    = jet(64);
+            clims    = [-(coolLen + 1) hotLen];
+ %           end
             
             % show all scores
             %imageRGB    = ind2rgb(delayMapTrialRoi + coolLen,cmap);
             figure(figNum),set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none')
             %imagesc(delayMapTrialRoi,'CDataMapping','direct'),colormap(cmap);colorbar;
             %imagesc(delayMapTrialRoi,[-coolLen hotLen]),colormap('default');colorbar;
-            imagesc(delayMapTrialRoi,clims),colormap(cmap);colorbar;
+            imagesc(delayMapTrialRoi',clims),colormap(cmap);colorbar;
             axis xy; % to match view in multri-trial
             %imagesc(imageRGB),colorbar;
             %xlabel('Roi [#]'),
-            ylabel('Trials'),
-            title(sprintf('Frame Delay for First ROI Spike in range [%d:%d] from Event %s ',frameRange(1),frameRange(2),eventNames{1}))
+            xlabel('Trials'),
+            title(sprintf('Frame Delay for First ROI Spike in range [%d:%d] from Event %s ',frameRange(1),frameRange(2),eventName))
             
+%             % mark ROIs
+%             oldticksX       = get(gca,'xtick');
+%             oldticklabels   = roiNames(oldticksX); % cellstr(get(gca,'xtickLabel'));
+%             set(gca,'xticklabel',[])
+%             text(oldticksX, zeros(size(oldticksX)), oldticklabels, 'rotation',-45,'horizontalalignment','left','fontsize',8,'interpreter','none')            
+
             % mark ROIs
-            oldticksX       = get(gca,'xtick');
-            oldticklabels   = roiNames(oldticksX); % cellstr(get(gca,'xtickLabel'));
-            set(gca,'xticklabel',[])
-            text(oldticksX, zeros(size(oldticksX)), oldticklabels, 'rotation',-45,'horizontalalignment','left','fontsize',8,'interpreter','none')            
+            decimFactor     = ceil(length(roiNames)./10);
+            showInd         = 1:decimFactor:length(roiNames);
+            oldticklabels   = roiNames(showInd); % cellstr(get(gca,'xtickLabel'));
+            set(gca,'yticklabel',oldticklabels,'ytick',showInd)
+            %text(oldticksX, zeros(size(oldticksX)), oldticklabels, 'rotation',-45,'horizontalalignment','left','fontsize',8,'interpreter','none')            
             
          
         end
-        % ---------------------------------------------
-        
         
         % ==========================================
-        function [obj, frameRange] = SelectFrameRange(obj, frameRange)
-            % SelectFrameRange - selects frame range for filtering
-            % of the ROI spike events
-            isOK                  = false; % support next level function
-            options.Resize        ='on';
-            options.WindowStyle   ='modal';
-            options.Interpreter   ='none';
-            prompt                = {'ROI Spike Event Start and Stop [Video Frame Numbers]',...            
-                                    };
-            name                ='Add New Event to all trials:';
-            numlines            = 1;
-            defaultanswer       ={num2str(frameRange)};
-            answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
-            if isempty(answer), return; end;
-
-
-            % try to configure
-            frameRange          = str2num(answer{1});
-
-            % check
-            if numel(frameRange) ~= 2,
-                errordlg('You must provide two frame numbers for event start and stop')
-                return
+        function obj = ShowHistMapPerEvent(obj, DoOrder, EventNames)
+           % ShowHistMapPerEvent - detects ROI activity and shows all active ROIs for all trials on one axis
+           % delay betwen first activation time and fiven given event 
+            % Input:
+            %    DoOrder    - present this map in certain order
+            %    EventNames - which event to show cell array of strings
+            % Output:
+            %    obj        - image map 
+            
+            if nargin < 2,   DoOrder       = false; end
+            if nargin < 3,   EventNames    = ''; end
+            
+            % params
+            figNum       = 21;
+            
+            eventName    = SelectEvent(obj,EventNames);
+            
+            
+            % check against all ROIs
+            %eventNames    = EventNames;
+            eventNum      = length(eventName);
+            if eventNum < 1,
+                 DTP_ManageText([], sprintf('Group : You need to supply event as cell array of strings.'), 'E' ,0)   ;
+                 return
             end
-        
+            eventNum       = 1; % use only one
+            eId            = 1; % event id
+            
+            roiNames      = obj.MngrData.UniqueRoiNames;
+            roiNum        = length(roiNames);
+            if roiNum < 1,
+                 DTP_ManageText([], sprintf('Group : You need to initialize the database. Call obj.Init'), 'E' ,0)   ;
+                 return
+            end
+            % assume init has been done
+%             trialNum                = obj.MngrData.ValidTrialNum;
+%             frameNum                = 1;
+            
+            % ask fort frame range  
+            %frameRange              = [-100 obj.MngrData.TwoPhoton_FrameNum];
+            %[obj, frameRange]       = SelectFrameRange(obj, frameRange);
+            [obj, frameRange]       = SelectFrameRange(obj);
+            
+            % compute           
+            [obj, delayMapTrialRoi] = ComputeDelayMapPerEvent(obj, eventName, frameRange);
+            %delayMapTrialRoi        = delayMapTrialRoi; %+ frameRange(1);
+            
+            %  compute hist
+            %histBins                = frameRange(1):frameRange(end);
+            minV                    = min(delayMapTrialRoi(~isnan(delayMapTrialRoi)));
+            maxV                    = max(delayMapTrialRoi(~isnan(delayMapTrialRoi)));
+            histBins                = linspace(minV-5,maxV+5,64);
+            binsRoiMap              = zeros(numel(histBins),roiNum);
+            for m = 1:roiNum,
+                cnts                = hist(delayMapTrialRoi(:,m),histBins);
+                binsRoiMap(:,m)     = cnts(:);
+            end
+            
+            % order the display
+            if DoOrder,
+                centerOfMassDelay   = histBins*binsRoiMap ./ (sum(binsRoiMap)+eps);
+                [sortV,sortInd]     = sort(centerOfMassDelay,'ascend');
+                sortName            = 'Ordered';
+            else
+                sortInd             = 1:roiNum;
+                sortName            = '';
+            end
+            
+
+            
+            % show all scores
+            %imageRGB    = ind2rgb(delayMapTrialRoi + coolLen,cmap);
+            figure,set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none')
+            %imagesc(delayMapTrialRoi,'CDataMapping','direct'),colormap(cmap);colorbar;
+            %imagesc(delayMapTrialRoi,[-coolLen hotLen]),colormap('default');colorbar;
+            %imagesc(binsRoiMap,clim),colormap(cmap);colorbar;
+            imagesc(histBins,1:roiNum,binsRoiMap(:,sortInd)');colormap(jet);colorbar;
+            if DoOrder,
+            hold on;
+            plot(sortV,1:roiNum,'color',[1 1 1]*.5,'LineWidth',4);
+            hold off;
+            end
+            %axis xy; % to match view in multri-trial
+            %imagesc(imageRGB),colorbar;
+            %xlabel('Roi [#]'),
+            xlabel('Difference Between Event and First Spike [Frame Numbers]'),
+            title(sprintf('%s Delay Histogram for First ROI Spike in range [%d:%d] from Event %s ',sortName,frameRange(1),frameRange(2),eventName))
+%             
+%             % mark ROIs
+%             oldticksY       = get(gca,'ytick');
+%             oldticklabels   = roiNames(oldticksY); % cellstr(get(gca,'xtickLabel'));
+%             set(gca,'yticklabel',[])
+%             text(zeros(size(oldticksY))+frameRange(1)-10, oldticksY , oldticklabels, 'rotation',0,'horizontalalignment','left','fontsize',8,'interpreter','none')            
+
+            % mark ROIs
+            decimFactor     = ceil(length(roiNames)./10);
+            showInd         = 1:roiNum; %1:decimFactor:roiNum;
+            oldticklabels   = roiNames(sortInd); % cellstr(get(gca,'xtickLabel'));
+            set(gca,'yticklabel',oldticklabels,'ytick',showInd)
+
+            DTP_ManageText([], sprintf('Group : Spike Order Graph is computed'), 'I' ,0)   ;
+
         end
+        
+        % ==========================================
+        function obj = ShowSpikeOrderMatrx(obj, EventNames)
+           % ShowSpikeOrderMatrx - shows cross ROI dF/F order matrix for all trials 
+            % Input:
+            %    EventNames - which event to show cell array of strings
+            % Output:
+            %    obj        - image map 
+            
+            if nargin < 2,   EventNames    = ''; end
+            
+            % params
+            figNum       = 41;
+            eventName    = SelectEvent(obj,EventNames);
+            
+            
+            % check against all ROIs
+            %eventNames    = EventNames;
+            eventNum      = length(eventName);
+            if eventNum < 1,
+                 DTP_ManageText([], sprintf('Group : You need to supply event as cell array of strings.'), 'E' ,0)   ;
+                 return
+            end
+            
+            roiNames      = obj.MngrData.UniqueRoiNames;
+            roiNum        = length(roiNames);
+            if roiNum < 1,
+                 DTP_ManageText([], sprintf('Group : You need to initialize the database. Call obj.Init'), 'E' ,0)   ;
+                 return
+            end
+            % ask fort frame range  
+            [obj, frameRange]       = SelectFrameRange(obj);
+            
+            % compute           
+            [obj, delayMapTrialRoi] = ComputeDelayMapPerEvent(obj, eventName, frameRange);
+            
+            %  compute order map
+            countBins               = nan(roiNum,roiNum);
+            %trialNum                = size(delayMapTrialRoi,1);
+            for m = 1:roiNum, % from
+                fromDelay = delayMapTrialRoi(:,m);
+                for n = 1:roiNum,
+                    toDelay     = delayMapTrialRoi(:,n);
+                    isValid     = ~isnan(fromDelay) & ~isnan(toDelay);
+                    if ~any(isValid), continue; end;
+                    countBins(m,n) = sum(fromDelay(isValid) >= toDelay(isValid));
+                end
+            end
+            
+            
+
+            
+            % show all scores
+            %imageRGB    = ind2rgb(delayMapTrialRoi + coolLen,cmap);
+            figure,set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none')
+            imagesc(1:roiNum,1:roiNum,countBins);colormap(jet);colorbar;
+            title(sprintf('Relative Order Histogram (Row after Columns) in range [%d:%d] from Event %s ',frameRange(1),frameRange(2),eventName))
+            % mark ROIs
+            decimFactor     = ceil(length(roiNames)./10);
+            showInd         = 1:decimFactor:roiNum;
+            oldticklabels   = roiNames(showInd); % cellstr(get(gca,'xtickLabel'));
+            set(gca,'yticklabel',oldticklabels,'ytick',showInd)
+            set(gca,'xticklabel',oldticklabels,'xtick',showInd)
+
+            DTP_ManageText([], sprintf('Group : Relative Spike Order Count Matrix is computed'), 'I' ,0)   ;
+
+        end
+        
         
         % ==========================================
         function obj = ShowOneGroup(obj, DataStr, figNum)
@@ -660,8 +906,6 @@ classdef TPA_MultiTrialGroupDetect
              xlabel('Frame [#]'),ylabel('dF/F')
          
         end
-        % ---------------------------------------------
-        
         
         % ==========================================
         function obj = TestOneGroup(obj,testType )
@@ -698,7 +942,6 @@ classdef TPA_MultiTrialGroupDetect
             end;
          
         end
-        % ---------------------------------------------
         
         % ==========================================
         function obj = TestManyGroups(obj)

@@ -304,25 +304,96 @@ classdef TPA_ManageRoiAutodetect
             switch dffType,
                 case 1, % dFF - mean
                     imgMean           = mean(obj.ImgData,3);
+                    imgMean           = imfilter(imgMean,ones(3,3)./9);
                     obj.ImgDFF        = bsxfun(@minus, obj.ImgData,imgMean);
-                    obj.ImgDFF        = bsxfun(@times, obj.ImgDFF,1./(eps+imgMean));
+                    obj.ImgDFF        = bsxfun(@times, obj.ImgDFF,1./(100+imgMean));
                     
                     dffName               = 'dFF - Mean';
+                    
                 case 2, % dFF  - std
-                    imgMean           = mean(obj.ImgData,1);
-                    imgStd            = std(obj.ImgDFF,1)+eps;
+                    imgMean           = mean(obj.ImgData,3);
+                    imgStd            = std(obj.ImgData,[],3)+eps;
                     obj.ImgDFF        = bsxfun(@minus, obj.ImgDFF,imgMean);
                     obj.ImgDFF        = bsxfun(@times, obj.ImgDFF,1./imgStd);
                     
                     dffName               = 'dFF - STD';
+                 
+                case 3, % dFF  - Median
+                    imgMean           = median(obj.ImgData,3);
+                    imgStd            = imgMean + 1; %std(obj.ImgDFF,[],3)+eps;
+                    obj.ImgDFF        = bsxfun(@minus, obj.ImgDFF,imgMean);
+                    obj.ImgDFF        = bsxfun(@times, obj.ImgDFF,1./imgStd);
+                    
+                    dffName               = 'dFF - Median';
+                    
                     
                 case 11, % dFF - mean local
                     
                     filtMean         = ones(3,3,20); filtMean = filtMean./sum(filtMean(:));
-                    obj.ImgDFF       = imfilter(obj.ImgData,filtMean,'replicate')+eps;
-                    obj.ImgDFF       = obj.ImgData./obj.ImgDFF - 1;
+                    obj.ImgDFF       = imfilter(obj.ImgData,filtMean,'replicate');
+                    imgMin           = min(obj.ImgData,[],3);
+                    imgMax           = max(obj.ImgData,[],3);
+                    imgDiff          = imgMax - imgMin + 1;
+                    obj.ImgDFF       = bsxfun(@minus, obj.ImgDFF,imgMin);
+                    obj.ImgDFF       = bsxfun(@times, obj.ImgDFF,1./imgDiff);
                     
                     dffName               = 'dFF - Mean Local';
+                    
+                case 12, % dFF  - Mean Filtered
+                    
+                    filtMean         = ones(7,7,7); filtMean = filtMean./sum(filtMean(:));
+                    obj.ImgDFF       = imfilter(obj.ImgData,filtMean,'replicate');
+                    imgMin           = min(obj.ImgDFF,[],3);
+                    imgMax           = max(obj.ImgDFF,[],3);
+                    
+                    imgMean           = imgMax .*0.1 + imgMin .* 0.9;
+                    obj.ImgDFF        = bsxfun(@minus, obj.ImgDFF,imgMean);
+                    obj.ImgDFF        = bsxfun(@times, obj.ImgDFF,1./imgMean);
+                    
+                    dffName               = 'dFF - Median';
+            
+                case 13, % dFF  - Mean Filtered + Rize detect
+                    
+                    filtMean         = ones(5,5,7); filtMean = filtMean./sum(filtMean(:));
+                    imgDataFilt      = imfilter(obj.ImgData,filtMean,'replicate','full');
+                    obj.ImgDFF       = imgDataFilt(:,:,6+(1:obj.ImgSize(3))) - imgDataFilt(:,:,1+(1:obj.ImgSize(3)));
+                    imgThr           = mean(mean(std(obj.ImgDFF,[],3),1),2)*3 + 10;
+                    %imgMax           = max(obj.ImgDFF,[],3);
+                    
+                    %imgMean           = imgMax .*0.1 + imgMin .* 0.9;
+                    %obj.ImgDFF        = bsxfun(@minus, obj.ImgDFF,imgMean);
+                    obj.ImgDFF        = bsxfun(@times, obj.ImgDFF,1./imgThr);
+                    
+                    dffName               = 'dFF - Rize Time';
+                    
+                case 14, % dFF  - 10% Min
+                    
+                    filtMean         = ones(3,3,3); filtMean = filtMean./sum(filtMean(:));
+                    imgDataFilt      = imfilter(obj.ImgData,filtMean,'replicate');
+                    obj.ImgDFF       = sort(imgDataFilt,3,'ascend');
+                    imgMin          = mean(obj.ImgDFF(:,:,1:ceil(obj.ImgSize(3)/10)),3);
+                    imgMean           = imgMin + 100;
+                    
+                    %imgMean           = imgMax .*0.1 + imgMin .* 0.9;
+                    obj.ImgDFF        = bsxfun(@minus, imgDataFilt,imgMin);
+                    obj.ImgDFF        = bsxfun(@times, obj.ImgDFF,1./imgMean);
+                    
+                    dffName               = 'dFF - 10%';
+                    
+                case 15, % dFF  - Max Filtered 
+                    
+                    filtMean         = ones(5,5,7); filtMean = filtMean./sum(filtMean(:));
+                    obj.ImgDFF       = imfilter(obj.ImgData,filtMean,'replicate');
+                    imgMin           = min(obj.ImgDFF,[],3);
+                    imgMax           = max(obj.ImgDFF,[],3);
+                    imgThr           = mean(mean(std(obj.ImgDFF,[],3),1),2)*3 + 10;
+                    %imgMax           = max(obj.ImgDFF,[],3);
+                    
+                    %imgMean           = imgMax .*0.1 + imgMin .* 0.9;
+                    %obj.ImgDFF        = bsxfun(@minus, obj.ImgDFF,imgMean);
+                    obj.ImgDFF        = bsxfun(@times, obj.ImgDFF,1./imgThr);
+                    
+                    dffName               = 'dFF - Max Filter';
                     
                     
               otherwise
@@ -330,7 +401,7 @@ classdef TPA_ManageRoiAutodetect
             end;
             
             % save for show - destroy original
-            obj.ImgData  = obj.ImgDFF;
+            %obj.ImgData  = obj.ImgDFF;
             DTP_ManageText([], sprintf('AutoDetect : dFF selected : %s',dffName), 'I' ,0)   ;
            
         end
@@ -621,7 +692,7 @@ classdef TPA_ManageRoiAutodetect
                 case 2,
  
                     % params
-                    dffType         = 1;
+                    dffType         = 12;
                     emphType        = 5;   % signal emphasize type
                     dffThr          = 3;   % to be sure
                     filtThr         = ones(5,5,5); filtThr = filtThr./sum(filtThr(:));
@@ -630,7 +701,7 @@ classdef TPA_ManageRoiAutodetect
                 case 3,
  
                     % params
-                    dffType         = 1;
+                    dffType         = 3;
                     emphType        = 6;   % signal emphasize type
                     dffThr          = 5;   % to be sure
                     filtThr         = ones(5,5,5); filtThr = filtThr./sum(filtThr(:));
@@ -639,9 +710,9 @@ classdef TPA_ManageRoiAutodetect
                 case 4,
  
                     % params
-                    dffType         = 11;  % local mean
-                    emphType        = 6;   % signal emphasize type
-                    dffThr          = 5;   % to be sure
+                    dffType         = 14;  % local mean
+                    emphType        = 4;   % signal emphasize type
+                    dffThr          = 10;   % to be sure
                     filtThr         = ones(5,5,5); filtThr = filtThr./sum(filtThr(:));
                     minAreaThr      = nR/50*nC/50;
                     
@@ -691,6 +762,7 @@ classdef TPA_ManageRoiAutodetect
             % output
             obj.EventCC     = CC;
             obj.ImgDFF      = single(labelmatrix(CC));
+            DTP_ManageText([], sprintf('AutoDetect : Found %d active regions.',CC.NumObjects), 'I' ,0);
             
         end
         % ---------------------------------------------
@@ -736,6 +808,7 @@ classdef TPA_ManageRoiAutodetect
             % remove overlaps
             
             % output
+            DTP_ManageText([], sprintf('AutoDetect : Converted to %d ROIs.',cellNum), 'I' ,0);
             
         end
         % ---------------------------------------------
@@ -776,9 +849,17 @@ classdef TPA_ManageRoiAutodetect
                 DTP_ManageText([], sprintf('AutoDetect : Please run SetData first.'), 'E' ,0);
                 return
              end
+             objNum     = obj.EventCC.NumObjects;
+             if objNum < 1,
+                DTP_ManageText([], sprintf('AutoDetect : Could not detect active regions. Call 911 .'), 'E' ,0);
+                return
+             end
             
             %figure(FigNum),
-            implay(cat(2,obj.ImgData,obj.ImgDFF))
+            maxV        = max(obj.ImgData(:));
+            grayImg     = reshape(obj.ImgData./maxV,[obj.ImgSize(1) obj.ImgSize(2) 1 obj.ImgSize(3)]);
+            clrImage    = reshape(single(obj.ImgDFF > 0),[obj.ImgSize(1) obj.ImgSize(2) 1 obj.ImgSize(3)]);
+            implay(cat(3,clrImage,grayImg,grayImg*0))
             
             
         end

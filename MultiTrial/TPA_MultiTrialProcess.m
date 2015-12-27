@@ -12,6 +12,8 @@ function Par = TPA_MultiTrialProcess(Par,FigNum)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 21.19 08.12.15 UD     Adding MinFluorLevel
+% 21.04 25.08.15 UD     Adding artifact support
 % 17.09 07.04.14 UD     Support different methods of dF/F
 % 17.01 08.03.14 UD     Adding registration results
 % 16.17 24.02.14 UD     Created
@@ -28,7 +30,7 @@ global SData
 %%%%%%%%%%%%%%%%%%%%%%
 % Run over all files/trials and load the Analysis data
 %%%%%%%%%%%%%%%%%%%%%%
-Par.DMT                 = Par.DMT.CheckData();    % important step to validate number of valid trials    
+Par.DMT                 = Par.DMT.CheckData(false);    % important step to validate number of valid trials    
 validTrialNum           = Par.DMT.ValidTrialNum;
 if validTrialNum < 1,
     DTP_ManageText([], sprintf('Multi Trial : Missing data in directory %s. Please check the folder or run Data Check',Par.DMT.RoiDir),  'E' ,0);
@@ -65,13 +67,17 @@ for trialInd = 1:validTrialNum,
         Par.Roi.AverageType             = Par.ROI_AVERAGE_TYPES.MEAN; % only mean on all rois
         [Par,SData.strROI]              = TPA_AverageMultiROI(Par,SData.strROI,0);
         
+        
+        %%%%%%%%%%%%%%%%%%%%%%
+        % Artifact removal
+        %%%%%%%%%%%%%%%%%%%%%%
+        tmpFigNum                       = Par.Debug.ArtifactFigNum;
+        [Par,SData.strROI]              = TPA_FixArtifactsROI(Par, SData.strROI,tmpFigNum);
+
+        
         %%%%%%%%%%%%%%%%%%%%%%
         % dF/F Analysis
         %%%%%%%%%%%%%%%%%%%%%%
-%        Par.Roi.ProcessType             = Par.ROI_DELTAFOVERF_TYPES.MEAN;        % see TPA_ProcessROI
-%        Par.Roi.ProcessType = Par.ROI_DELTAFOVERF_TYPES.MIN10;      % see TPA_ProcessROI
-%        Par.Roi.ProcessType = Par.ROI_DELTAFOVERF_TYPES.STD;        % see TPA_ProcessROI
-
         tmpFigNum                       = Par.Debug.DeltaFOverFigNum; % show some progress
         [Par,SData.strROI]              = TPA_ProcessROI(Par,SData.strROI,tmpFigNum);
          

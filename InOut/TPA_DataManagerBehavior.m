@@ -15,6 +15,11 @@ classdef TPA_DataManagerBehavior
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 21.12 24.11.15 UD     Fix - Do not generate 2D matrix of Eventnames
+    % 21.11 17.11.15 UD     Fixing names when no behave data
+    % 21.10 10.11.15 UD     Remove with multi index
+    % 21.03 25.08.15 UD     Bring GUI inside
+    % 20.12 27.07.15 UD     Support video subset read
     % 20.05 19.05.15 UD     Video files only could be imported
     % 19.32 12.05.15 UD     Can import events without video files
     % 19.09 14.10.14 UD     Import Jaaba from external storage support
@@ -171,6 +176,7 @@ classdef TPA_DataManagerBehavior
              isOK       = true;
              obj.Trial = trial;
          end % set.Trial
+        % ---------------------------------------------
        
         % ==========================================
          function [obj,isOK] = SetSliceNum(obj,sliceNum)
@@ -184,7 +190,7 @@ classdef TPA_DataManagerBehavior
              DTP_ManageText([], sprintf('Slice Number is : %d',sliceNum), 'I' ,0);
              
          end
-         
+        % ---------------------------------------------
          
          % ==========================================
          function [obj,isOK] = SetResolution(obj,resolValues)
@@ -216,8 +222,7 @@ classdef TPA_DataManagerBehavior
              obj.Resolution   = resolValues;
              DTP_ManageText([], sprintf('Resolution is : %d [um/pix] %d [um/pix] %d [um/frame] %d [frame/sec]',resolValues), 'I' ,0);
          end % set.Resolution
-         
-         
+        % ---------------------------------------------
          
          % ==========================================
          function [obj,isOK] = SetDecimation(obj,decimFactor)
@@ -256,7 +261,6 @@ classdef TPA_DataManagerBehavior
          end % set.Decimation
         % ---------------------------------------------
          
-     
         % ==========================================
         function obj = SelectJaabaDir(obj,dirPath)
             % SelectJaabaDir - loads Jaaba video file names
@@ -462,7 +466,7 @@ classdef TPA_DataManagerBehavior
         % ---------------------------------------------
         
         % ==========================================
-        function [obj, imgData] = LoadBehaviorData(obj,currTrial, fileDescriptor)
+        function [obj, imgData] = LoadBehaviorData(obj,currTrial, fileDescriptor, imageIndx)
             % LoadTwoPhotonData - loads currTrial image data into memory
             % Input:
             %     currTrial - integer that specifies trial to load
@@ -472,6 +476,7 @@ classdef TPA_DataManagerBehavior
             
             if nargin < 2, currTrial = 1; end;
             if nargin < 3, fileDescriptor = 'side'; end;
+            if nargin < 4, imageIndx = [1 Inf]; end;
             
             imgData = [];
             
@@ -548,10 +553,18 @@ classdef TPA_DataManagerBehavior
             %readObj             = VideoReader(fileDirName);
             if verLessThan('matlab', '8.1.0')
                 readObj             = mmreader(fileDirName);
+                numFrames           = readObj.NumberOfFrames;
             else
                 readObj             = VideoReader(fileDirName);
-            end            
-            imgData             = read(readObj);
+                lastFrame           = read(readObj, inf); % variable frame rate
+                numFrames           = readObj.NumberOfFrames;                
+            end       
+            
+            % check image index
+            imageIndx           = max(1,min(numFrames,imageIndx));
+            
+            % read only the relevant indexes
+            imgData             = read(readObj,imageIndx);
             
             % check decimation
             if any(obj.DecimationFactor > 1),
@@ -586,7 +599,6 @@ classdef TPA_DataManagerBehavior
             DTP_ManageText([], sprintf('Behavior : %d images from file %s are loaded successfully',imgSize(4),fileNamesC{currTrial}), 'I' ,0)   ;             
         end
         % ---------------------------------------------
-        
         
         % ==========================================
         function obj = SaveBehaviorData(obj,currTrial,fileDescriptor,imgData)
@@ -654,7 +666,6 @@ classdef TPA_DataManagerBehavior
         end
         % ---------------------------------------------
         
-        
         % ==========================================
         function obj = CheckImageData(obj,imgData)
             % CheckImageData - checks if there are drop frames and sync between channels
@@ -710,8 +721,6 @@ classdef TPA_DataManagerBehavior
            
         end
         % ---------------------------------------------
-        
-        
         
         % ==========================================
         function obj = CompressBehaviorData(obj,trialInd, fileDescriptor)
@@ -813,8 +822,10 @@ classdef TPA_DataManagerBehavior
                         
             % check if the analysis has been done before
             if obj.EventFileNum > 0 && obj.EventFileNum >= currTrial,
-                fileName        = obj.EventFileNames{currTrial} ;
-                return
+                if ~isempty(obj.EventFileNames{currTrial}),
+                    fileName        = obj.EventFileNames{currTrial} ;
+                    return
+                end
             else
                 %DTP_ManageText([], sprintf('Behavior \t: No Event file name are found. Trying to determine them from Video data.'), 'W' ,0) ;
             end
@@ -829,7 +840,8 @@ classdef TPA_DataManagerBehavior
                 fileDescriptor  = 'side';
             else
                 DTP_ManageText([], sprintf('Behavior : Event : No video files. Need to load video first.'), 'E' ,0) ;
-                return
+                fileName        = sprintf('front_%03d',currTrial) ;
+                fileDescriptor  = 'front';
             end
             
              % get prefix and siffix position : there is a directory name before
@@ -849,7 +861,7 @@ classdef TPA_DataManagerBehavior
              fileName   = regexprep(obj.EventFilePattern,'*',experName);
                         
         end
-        
+        % ---------------------------------------------
         
         % ==========================================
         function [obj, usrData] = LoadAnalysisData(obj,currTrial, strName)
@@ -894,7 +906,7 @@ classdef TPA_DataManagerBehavior
             
             % output
             obj.Trial                      = currTrial;
-            obj.EventFileNames{currTrial,1}  = fileName;
+            obj.EventFileNames{currTrial}  = fileName;
             obj.ValidTrialNum              = max(obj.ValidTrialNum,currTrial);
                 
             DTP_ManageText([], sprintf('Behavior : Analysis data from file %s has been loaded successfully',obj.EventFileNames{currTrial}), 'I' ,0)   ;             
@@ -959,8 +971,6 @@ classdef TPA_DataManagerBehavior
             DTP_ManageText([], sprintf('Behavior : Event data saved to file %s ',fileToSave), 'I' ,0)   ;             
         end
         % ---------------------------------------------
-        
-  
         
         % ==========================================
         function obj = SelectAllData(obj,dirPath,fileDescriptor)
@@ -1030,7 +1040,6 @@ classdef TPA_DataManagerBehavior
             
         end
         % ---------------------------------------------
-        
 
         % ==========================================
         function obj = RemoveRecord(obj,currTrial, removeWhat)
@@ -1044,32 +1053,36 @@ classdef TPA_DataManagerBehavior
             if nargin < 2, currTrial = 1; end;
             if nargin < 3, removeWhat = 4; end
           
-            if currTrial < 1, return; end;
+            if any(currTrial < 1), 
+                DTP_ManageText([], sprintf('Event \t: index error.'), 'E' ,0)
+                return; 
+            end;
 %             if currTrial > obj.VideoFileNum,
 %                 DTP_ManageText([], sprintf('Event \t: Requested trial exceeds video files. Nothing is deleted.'), 'E' ,0) ;
 %                 return
 %             end;
             isRemoved = false;
+            fileNumRemove   = numel(currTrial);
 
             % video
-            if obj.VideoFrontFileNum > 0 && currTrial <= obj.VideoFrontFileNum && bitand(removeWhat,1)>0,
+            if obj.VideoFrontFileNum > 0 && all(currTrial <= obj.VideoFrontFileNum) && bitand(removeWhat,1)>0,
                 obj.VideoFrontFileNames(currTrial) = [];
-                obj.VideoFrontFileNum               = obj.VideoFrontFileNum - 1;
+                obj.VideoFrontFileNum               = obj.VideoFrontFileNum - fileNumRemove;
                 isRemoved = true;
             end
-            if obj.VideoSideFileNum > 0 && currTrial <= obj.VideoSideFileNum && bitand(removeWhat,2)>0,
+            if obj.VideoSideFileNum > 0 && all(currTrial <= obj.VideoSideFileNum) && bitand(removeWhat,2)>0,
                 obj.VideoSideFileNames(currTrial)  = [];
-                obj.VideoSideFileNum                = obj.VideoSideFileNum - 1;
+                obj.VideoSideFileNum                = obj.VideoSideFileNum - fileNumRemove;
                 isRemoved = true;
             end
             if obj.VideoFrontFileNum > 0 || obj.VideoSideFileNum > 0,
-                obj.VideoFileNum                    = obj.VideoFileNum - 1;
+                obj.VideoFileNum                    = obj.VideoFileNum - fileNumRemove;
             end
             
             % analysis
-            if obj.EventFileNum > 0 && currTrial <= obj.EventFileNum && bitand(removeWhat,4)>0,
+            if obj.EventFileNum > 0 && all(currTrial <= obj.EventFileNum) && bitand(removeWhat,4)>0,
                 obj.EventFileNames(currTrial)         = [];
-                obj.EventFileNum                       = obj.EventFileNum - 1;
+                obj.EventFileNum                       = obj.EventFileNum - fileNumRemove;
                 isRemoved = true;
             end
              
@@ -1082,7 +1095,6 @@ classdef TPA_DataManagerBehavior
             
         end
         % ---------------------------------------------
-        
         
         % ==========================================
         function [obj, CheckOK] = CheckData(obj)
@@ -1158,7 +1170,67 @@ classdef TPA_DataManagerBehavior
         end
         % ---------------------------------------------
         
+        % ==========================================
+        function [obj,isOK] = GuiSelectTrial(obj)
         
+        % obj - data managing object
+        if nargin < 1, error('Must input Data Managing Object'); end
+        
+        isOK                = false; % support next level function
+        options.Resize      ='on';
+        options.WindowStyle ='modal';
+        options.Interpreter ='none';
+        prompt              = {sprintf('Enter trial number between %d:%d',1,obj.ValidTrialNum)};
+        name                ='Choose trial to load';
+        numlines            = 1;
+        defaultanswer       ={num2str(obj.Trial)};
+        
+        answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
+        if isempty(answer), return; end;
+        trialInd           = str2double(answer{1});
+        
+        % check validity
+        [obj,isOK]        = obj.SetTrial(trialInd);
+        
+%         if~isequal(Par.DMT.Trial,Par.DMB.Trial), 
+%             DTP_ManageText([], 'TwoPhoton and Behavior datasets have different trials numbers', 'W' ,0)   ;             
+%         end
+        
+    end        
+        % ---------------------------------------------
+        
+        % ==========================================
+        function [obj,isOK] = GuiSetDataParameters(obj)
+        
+        % obj - data managing object
+        if nargin < 1, error('Must input Data Managing Object'); end
+        
+        % config small GUI
+        isOK                  = false; % support next level function
+        options.Resize        ='on';
+        options.WindowStyle     ='modal';
+        options.Interpreter     ='none';
+        prompt                  = {'Data Resolution [X [um/pix] Y [um/pix] Z [um/frame] T [frame/sec]',...
+                                'Data Decimation Factor [X [(int>0)] Y [(int>0)] Z [(int>0)] T [(int>0)]',...            
+                                'Data Offset (N.A.)    [X [um] Y [um] Z [um] T [frame] ',...            
+                                };
+        name                ='Config Data Parameters';
+        numlines            = 1;
+        defaultanswer       ={num2str(obj.Resolution),num2str(obj.DecimationFactor),num2str(obj.Offset)};
+        answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
+        if isempty(answer), return; end;
+        
+        
+        % try to configure
+        res                 = str2num(answer{1});
+        [obj,isOK1]         = obj.SetResolution(res) ;       
+        dec                 = str2num(answer{2});
+        [obj,isOK2]         = obj.SetDecimation(dec) ;       
+        isOK                = isOK1 && isOK2;
+        
+        
+    end
+        % ---------------------------------------------
         
         % ==========================================
         function obj = TestSelect(obj)
@@ -1226,7 +1298,6 @@ classdef TPA_DataManagerBehavior
         end
         % ---------------------------------------------
        
-       
         % ==========================================
         function obj = TestLoadDecimation(obj)
             % TestLoadDecimation - given a directory loads full data
@@ -1279,8 +1350,6 @@ classdef TPA_DataManagerBehavior
          
         end
         % ---------------------------------------------
-        
-        
          
         % ==========================================
         function obj = TestAnalysis(obj)
@@ -1345,8 +1414,6 @@ classdef TPA_DataManagerBehavior
          
         end
         % ---------------------------------------------
-       
-        
         
         
     end% methods
