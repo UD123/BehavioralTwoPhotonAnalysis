@@ -12,6 +12,8 @@ function Par = TPA_MultiTrialRegistration(Par,FigNum)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 23.16 28.06.16 UD     Fast matrix inverse registration
+% 21.10 10.11.15 UD     Do not check directories again
 % 19.19 11.01.15 UD     Fixing bug with shifts
 % 19.16 30.12.14 UD     Multi Dim data support
 % 17.01 08.03.14 UD     Created
@@ -31,11 +33,14 @@ mcObj                   = TPA_MotionCorrectionManager();
 % mean image over all trials
 meanData                = [];
 
+% which algo to run : 3-Mtrx Inverse,4-Template x 3
+algType                 = Par.Image.MotionCorrectAlgType;
+
 
 %%%%%%%%%%%%%%%%%%%%%%
 % Run over all files/trials and load the Analysis data
 %%%%%%%%%%%%%%%%%%%%%%
-Par.DMT                 = Par.DMT.CheckData();    % important step to validate number of valid trials    
+Par.DMT                 = Par.DMT.CheckData(false);    % do not check dirs - use user selection   
 validTrialNum           = Par.DMT.ValidTrialNum;
 if validTrialNum < 1,
     DTP_ManageText([], sprintf('Multi Trial : Missing data in directory %s. Please check the folder or run Data Check',Par.DMT.RoiDir),  'E' ,0);
@@ -66,7 +71,7 @@ for trialInd = 1:validTrialNum,
 %        [mcObj,estShift]                = AlgMultipleImageBox(mcObj, 3);
         
         % shift is multi dimensional
-        [mcObj,estShift,imgData]         = AlgApply(mcObj, SData.imTwoPhoton ,4);        
+        [mcObj,estShift,imgData]         = AlgApply(mcObj, SData.imTwoPhoton ,algType);        
 
         % save shift
         [Par.DMT, usrData]             = Par.DMT.SaveAnalysisData(Par.DMT.Trial,'strShift',estShift);
@@ -83,7 +88,7 @@ DTP_ManageText([], sprintf('Multi Trial : Trial Registration is computed for %d 
 %%%%%%%%%%%%%%%%%%%%%%
 % mcObj                           = mcObj.SetData(meanData);
 % [mcObj,estShift]                = AlgMultipleImageBox(mcObj, 3);
-[mcObj,estShift]                = AlgApply(mcObj, meanData ,4);
+[mcObj,estShift]                = AlgApply(mcObj, meanData ,algType);
 
 
 figNum                          = Par.FigNum + 10;

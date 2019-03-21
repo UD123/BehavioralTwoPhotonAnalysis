@@ -11,6 +11,10 @@ function [Par,StrROI] = TPA_ProcessROI(Par,StrROI,FigNum)
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 28.06 35.01.18 UD     Multi trial baseline.
+% 28.04 15.01.18 UD     Adding Inhibitory ROI option.
+% 23.02 06.02.16 UD  	Debug roi class 
+% 21.19 08.12.15 UD     Support dF/F with small bias
 % 17.09 07.04.14 UD     Support different dF/F
 % 12.01 14.09.13 UD     Support Z stack
 % 11.06 06.08.13 UD 	support two channel processing
@@ -27,17 +31,17 @@ if nargin < 1,  error('Requires input params');         end;
 
 % check for multiple Z ROIs
 numROI              = length(StrROI);
-if numROI < 1,
+if numROI < 1
     DTP_ManageText([], sprintf('ROI Process : No ROI data is found. Please select/load ROIs'),  'E' ,0);
     return
 end
 % check for multiple Z ROIs
-if ~isfield(StrROI{1},'meanROI') ,
-    DTP_ManageText([], sprintf('ROI Process :Something wrong with ROI data. Export is not done properly'),  'E' ,0);
+if ~isprop(StrROI{1},'Data') 
+    DTP_ManageText([], sprintf('ROI Process :Something wrong with ROI data. You should review this ROI structure'),  'E' ,0);
     return
 end
-% check for multiple Z ROIs
-if isempty(StrROI{1}.meanROI) ,
+% check if empty
+if isempty(StrROI{1}.Data) 
     DTP_ManageText([], sprintf('ROI Process : No average fluorescence data found. May be you need to do averaging first.'),  'E' ,0);
     return
 end
@@ -48,29 +52,31 @@ end
 
 DTP_ManageText([], sprintf('ROI Process : Started ...'),  'I' ,0), tic;
 
+baseLineROIs    = repmat(StrROI{1}.Data(:,1),1,numROI);
     
-for k = 1:numROI,
+for k = 1:numROI
     
     % Processing works on columns
-    meanROI             = StrROI{k}.meanROI;
+    meanROI                 = StrROI{k}.Data(:,1);
+    baseLine                = StrROI{k}.DataBaseLine;
 
     % compute dF/F
-     [Par,procROI,baselineROI]       = local_ProcessingROI(Par,meanROI,0);
+     [Par,procROI,baselineROI]       = local_ProcessingROI(Par,meanROI,baseLine,0);
      %procROI             = procROI;  % time info is along x axis
     
     % save
-    StrROI{k}.procROI       = procROI;
-    StrROI{k}.baselineROI   = baselineROI;
+    StrROI{k}.Data(:,2)    = procROI;
+    baseLineROIs(:,k)      = baselineROI;
     
-end;
+end
 
 % output
 DTP_ManageText([], sprintf('ROI Process : dF/F ROI is computed in %4.3f [sec] ...',toc),  'I' ,0);
 
-if FigNum < 1, return; end;
+if FigNum < 1, return; end
     
 %%% Concatenate all the ROIs in one Image
-procROI             = StrROI{1}.procROI;
+procROI             = StrROI{1}.Data(:,2);
 namePos             = ones(numROI,1);  % where to show the name
 nT                  = size(procROI,1);
 tt                  = (1:nT)';
@@ -78,14 +84,14 @@ tt                  = (1:nT)';
 TraceColorMap       = Par.Roi.TraceColorMap ;
 MaxColorNum         = Par.Roi.MaxColorNum;
 
-for k = 2:numROI,
+for k = 2:numROI
     %procROI         = [procROI StrROI{k}.procROI];
-    namePos(k)      = namePos(k-1) +length(StrROI{k}.lineInd);
-end;
+    namePos(k)      = namePos(k-1) +length(StrROI{k}.LineInd);
+end
 
 
 % figure(FigNum),set(gcf,'Tag','AnalysisROI'),clf;
-% imagesc(procROI',Par.dFFRange), colorbar; colormap(gray);
+% imagesc(procROI',Par.Roi.dFFRange), colorbar; colormap(gray);
 % hold on
 % for k = 1:numROI,
 %     text(10,namePos(k),StrROI{k}.Name,'color','y')
@@ -98,11 +104,11 @@ maxRange    = 100;
 figure(FigNum),set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none')
 for k = 1:numROI,
     clr             = TraceColorMap(mod(k,MaxColorNum)+1,:);
-    plot(tt,StrROI{k}.meanROI                   + namePos(k)*maxRange,'color',clr); hold on
-    plot(tt,StrROI{k}.baselineROI               + namePos(k)*maxRange,'color',clr,  'linestyle','--');
+    plot(tt,StrROI{k}.Data(:,1)             + namePos(k)*maxRange,'color',clr); hold on
+    plot(tt,baseLineROIs(:,k)               + namePos(k)*maxRange,'color',clr,  'linestyle','--');
     if k == 1, legend('Trace','BaseLine'); end
     %plot(tt,ones(nT,1)                          + namePos(k)*maxRange,'color',[1 1 1]*0.6,'linestyle',':');
-    text(10,StrROI{k}.baselineROI(10)           + namePos(k)*maxRange,StrROI{k}.Name,'color','y')
+    text(10,baseLineROIs(10,k)              + namePos(k)*maxRange,StrROI{k}.Name,'color','y')
 end
 hold off
 ylabel('Fluorescence (Increamental)'),xlabel('Frame Num')
@@ -113,7 +119,7 @@ maxRange            = 1; %max(Par.DataRange);
 figure(FigNum+1),set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none');
 for k = 1:numROI,
     clr             = TraceColorMap(mod(k,MaxColorNum)+1,:);    
-    plot(tt,StrROI{k}.procROI + namePos(k)*maxRange,'color',clr); hold on
+    plot(tt,StrROI{k}.Data(:,2) + namePos(k)*maxRange,'color',clr); hold on
     plot(tt,ones(nT,1)        + namePos(k)*maxRange,'color',[1 1 1]*0.6);
     text(10,namePos(k)*maxRange,StrROI{k}.Name,'color','y')
 end
@@ -132,11 +138,12 @@ return
 %%%%%%%%%%%%%%%%%%%%%%
 
 
-function [Par,RoiData,RoiBL]    = local_ProcessingROI(Par,RoiData,FigNum)
+function [Par,RoiData,RoiBL]    = local_ProcessingROI(Par,RoiData,BaseLine,FigNum)
 % local_ProcessingROI - performs different ROI processing operations 
 % Inputs:
 %        Par - different params for use
 %    RoiData - image data 
+%    BaseLine - base line image data 
 % Outputs:
 %        Par - different params for next use
 %    RoiData - image data after processing
@@ -154,9 +161,10 @@ function [Par,RoiData,RoiBL]    = local_ProcessingROI(Par,RoiData,FigNum)
 %%%%%%%%%%%%%%%%%%%%%%
 % Params
 %%%%%%%%%%%%%%%%%%%%%%
-if nargin < 1,     Par      = DTP_ParInit;      end;
+if nargin < 1,     Par      = DTP_ParInit;      end
 if nargin < 2,     RoiData  = rand(300,200);  RoiData(101:151,51:54) = 10*exp(-repmat((1:51)'/20,1,4));  end;
-if nargin < 3,     FigNum   = 1;                end;
+if nargin < 3,     FigNum   = 1;                end
+if nargin < 4,     FigNum   = 1;                end
 
 
 [rowNum,colNum]            = size(RoiData);
@@ -170,25 +178,25 @@ RoiDataSave = RoiData;
 %%%%%%%%%%%%%%%%%%%%%%
 % Compute 
 %%%%%%%%%%%%%%%%%%%%%%
-switch Par.Roi.ProcessType,
+switch Par.Roi.ProcessType
 
-     case Par.ROI_DELTAFOVERF_TYPES.MEAN,  % 'dF/F',
+     case Par.ROI_DELTAFOVERF_TYPES.MEAN  % 'dF/F',
         % standard dF/F Fo = mean
         Par.Roi.BaseLineType = 1;
         [Par,RoiBL]    = local_BaseLine(Par,RoiData);         
         RoiNorm        = abs(RoiBL); % in case if BL is negative
         RoiData        = (RoiData - RoiBL)./(RoiNorm+eps);
         
-    case Par.ROI_DELTAFOVERF_TYPES.MIN10,  % 'dF/F',
+    case Par.ROI_DELTAFOVERF_TYPES.MIN10  % 'dF/F',
         % 10% min dF/F Fo = 10% min values
         Par.Roi.BaseLineType = 5;
         [Par,RoiBL]    = local_BaseLine(Par,RoiData);         
         %[Par,RoiNorm]  = local_Normalization(Par,RoiData);
-        RoiNorm        = abs(RoiBL); % in case if BL is negative
+        RoiNorm        = max(0,RoiBL); % in case if BL is negative
         RoiData        = (RoiData - RoiBL)./(RoiNorm+eps);
         
         
-     case Par.ROI_DELTAFOVERF_TYPES.STD, %'dF/std',
+     case Par.ROI_DELTAFOVERF_TYPES.STD %'dF/std',
         Par.Roi.BaseLineType = 1;  % mean        
         [Par,RoiBL]    = local_BaseLine(Par,RoiData);     
         Par.Roi.ImageNormType = 2; % std
@@ -196,14 +204,41 @@ switch Par.Roi.ProcessType,
         RoiData        = (RoiData - RoiBL)./(RoiNorm+eps);
         
         
-     case Par.ROI_DELTAFOVERF_TYPES.MIN10CONT, %'dF/F F - 10% min continious',
+     case Par.ROI_DELTAFOVERF_TYPES.MIN10CONT %'dF/F F - 10% min continious',
         Par.Roi.BaseLineType = 6;
         [Par,RoiBL]    = local_BaseLine(Par,RoiData);         
         %[Par,RoiNorm]  = local_Normalization(Par,RoiData);
         RoiNorm        = abs(RoiBL); % in case if BL is negative
         RoiData        = (RoiData - RoiBL)./(RoiNorm+eps);
         
+        
+     case Par.ROI_DELTAFOVERF_TYPES.MIN10BIAS %'dF/F F - 10% min + bias',
+        Par.Roi.BaseLineType = 5;
+        [Par,RoiBL]    = local_BaseLine(Par,RoiData);         
+        %[Par,RoiNorm]  = local_Normalization(Par,RoiData);
+        RoiBL          = max(0,RoiBL); % in case if BL is negative
+        RoiData        = (RoiData - RoiBL)./(RoiBL + Par.Roi.MinFluorescentLevel);
 
+    case Par.ROI_DELTAFOVERF_TYPES.MAX10 % Fo = 10%Max. dF/F =  Fo - F / Fo 
+        % 10% max dF/F Fo = 10% max values
+        Par.Roi.BaseLineType = 4;
+        [Par,RoiBL]    = local_BaseLine(Par,RoiData);         
+        %[Par,RoiNorm]  = local_Normalization(Par,RoiData);
+        RoiBL          = max(0,RoiBL); % in case if BL is negative
+        RoiData        = (RoiBL - RoiData)./(RoiBL+eps);
+        
+    case Par.ROI_DELTAFOVERF_TYPES.MANY_TRIAL  % 'dF/F' with BIAS from many 
+        % 10% min dF/F Fo = 10% min values
+        %Par.Roi.BaseLineType = 5;
+        if isempty(BaseLine)
+            error('Baseline is not computed correctly');
+        end
+        RoiBL          = BaseLine;
+        %[Par,RoiBL]    = local_BaseLine(Par,RoiData);         
+        %[Par,RoiNorm]  = local_Normalization(Par,RoiData);
+        RoiNorm        = max(0,RoiBL); % in case if BL is negative
+        RoiData        = (RoiData - RoiBL)./(RoiNorm+eps);
+        
         
         
     otherwise
@@ -223,7 +258,7 @@ end
 % Par.ColName      = ColName;
 % Par.CellLabelNum = CellLabelNum;
 
-if FigNum < 1, return; end;
+if FigNum < 1, return; end
 
 % show
 figure(FigNum + 1),
@@ -300,7 +335,7 @@ switch Par.Roi.TimeFilterType
         
     otherwise
         error('Unsupported TimeFilterType')
-end;
+end
 
 
 return
@@ -309,33 +344,39 @@ return
 function [Par,ImgData]    = local_BaseLine(Par,ImgData, WinLen)
 % estimate base line of the data
 
-if nargin < 3, WinLen = 1; end;
+if nargin < 3, WinLen = 1; end
 
 [RowNum,ColNum]            = size(ImgData);
 
 %%%%%%%%%%%%%%%%%%%%%%
 % Compute baseline image
 %%%%%%%%%%%%%%%%%%%%%%
-switch Par.Roi.BaseLineType,
-    case 0, % no Baseline
+switch Par.Roi.BaseLineType
+    case 0 % no Baseline
         BaseLine    = ImgData*0;
         
-    case 1,	% mean value substraction - image is constant over the columns
+    case 1	% mean value substraction - image is constant over the columns
         BaseLine	= repmat(mean(ImgData),RowNum,1);
         
 %     case 2, % neuro phil and mean value substraction
 %         ImgData  =  ImgData - repmat(mean(ImgDataNeuroPhil(RowInd,:),2),1,ColNum);
 %         BaseLine	= repmat( mean(ImgData),RowNum,1);
         
-    case 3, % minimum value reductions
+    case 3 % minimum value reductions
         BaseLine	= repmat(min(ImgData),RowNum,1);
         
-    case 5, % mean of 10 % minimum values reductions
+    case 4 % mean of 10 % maximum values 
+        ImSort      = sort(ImgData,'descend');
+        MinNumber   = ceil(0.1*RowNum); % take 10 %
+        BaseLine	= repmat(mean(ImSort(1:MinNumber,:)),RowNum,1);
+        
+        
+    case 5 % mean of 10 % minimum values reductions
         ImSort      = sort(ImgData);
         MinNumber   = ceil(0.1*RowNum); % take 10 %
         BaseLine	= repmat(mean(ImSort(1:MinNumber,:)),RowNum,1);
    
-    case 6, % mean of 10 % minimum on consecutive data of 10% length - filter of with 10 support
+    case 6 % mean of 10 % minimum on consecutive data of 10% length - filter of with 10 support
         MinNumber   = ceil(0.05*RowNum); % take 10 %
         
         % filter to find low area
@@ -345,24 +386,24 @@ switch Par.Roi.BaseLineType,
         % replicate minima
         BaseLine	= repmat(min(ImgData),RowNum,1);
         
-    case 7,	% LP filter
+    case 7	% LP filter
         alpha		= 0.99;
         BaseLine	= filtfilt((1-alpha),[1 -alpha],ImgData);
         
-    case 10, % minimum adaptive window
+    case 10 % minimum adaptive window
         
         BaseLine    = ImgData;
         for k = WinLen+1:RowNum,
             suppInd = k - (0:WinLen-1);
             minVal  = min(ImgData(suppInd,:));
             BaseLine(k,:) = minVal;
-        end;
+        end
         % correct the starting index
         BaseLine(1:WinLen,:) = repmat(BaseLine(WinLen+1,:),WinLen,1);
         
         
     otherwise error('Unknown BaseLineType')
-end;
+end
 ImgData		= BaseLine;
 
 

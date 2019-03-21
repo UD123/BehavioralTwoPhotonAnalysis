@@ -23,6 +23,11 @@ classdef TPA_DataManagerJaaba
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 28.12 08.03.18 UD     Using offset to move the data in time.
+    % 28.03 07.01.18 UD     Removing TimeInd field - make event class manager .    
+    % 23.08 22.03.16 UD     Adding class to event and increasing filter of duration   
+    % 21.05 08.09.15 UD     Import Jaaba scores from Jab file - manual scores.   
+    % 20.05 19.05.15 UD     Import Jaaba with EventManager Class.   
     % 19.08 07.10.14 UD     For ronen - do not number names.   
     % 19.06 21.09.14 UD     Import movie_comb.avi files.   
     % 18.12 09.04.14 UD     new Jaaba Excel with User support
@@ -38,7 +43,7 @@ classdef TPA_DataManagerJaaba
     properties
         VideoDir                     = '';           % directory of the Front and Side view image Data
         EventDir                     = '';           % directory where the user Analysis data is stored
-        JaabaDir                       = '';            % directory where the user Jaaba data is stored (usually = BehaviorDir)
+        JaabaDir                       = '';         % directory where the user Jaaba data is stored (usually = BehaviorDir)
 
         VideoFileNum                = 0;             % number of trials (avi movies) in Video/Image Dir
         VideoFileNames              = {};            % file names in the Image directory
@@ -61,9 +66,16 @@ classdef TPA_DataManagerJaaba
         
         % Excel import support
         JaabaData                   = {};               % contains excel data
+        
+        % Jab file import export
+        JabFileName                 = '';               % name of the jab file
+        JabEventLabels              = [];               % contains jab file labels
+        JabEventNames               = {};               % event names
 
         
-%         % common info
+         % how to offset data from the start
+         Offset                     = [0 0 0 0];     % pix    pix     ???     frames
+        
          %VideoFileNum               = 0;             % number of trials (avi movies) in Side or Front views
          Trial                      = 0;             % current trial
          ValidTrialNum              = 0;             % summarizes the number of valid trials
@@ -238,16 +250,17 @@ classdef TPA_DataManagerJaaba
             %     jabData   - jaaba structure information for specific trial
             %         classiiers are subfields  
             
-            if nargin < 2, currTrial = 1; end;
+            if nargin < 2, currTrial = 1; end
             jabData = {};
             
             % there was an error during load
-            if obj.JaabaDirNum < 1,
+            if obj.JaabaDirNum < 1
                 showTxt     = sprintf('Jaaba : Can not find directories.');
                 DTP_ManageText([], showTxt, 'E' ,0) ;
                 return;
-            end;
-            if obj.JaabaDirNum < currTrial,
+            end
+            
+            if obj.JaabaDirNum < currTrial
                 showTxt     = sprintf('Jaaba : Requested trial %d exceeds Jaaba directory content.',currTrial);
                 DTP_ManageText([], showTxt, 'E' ,0) ;
                 return;
@@ -258,13 +271,13 @@ classdef TPA_DataManagerJaaba
             classNum    = obj.JaabaFileClassNum(currTrial);
             jabData     = cell(classNum,1); 
             fileToLoad  = '';
-            for m = 1:obj.JaabaFileClassNum(currTrial),
+            for m = 1:obj.JaabaFileClassNum(currTrial)
                 %
                 fileName        = obj.JaabaFileNames{currTrial,m};
                 fileToLoad      = fullfile(obj.JaabaDir,fileName);
                 
                 % check
-                 if ~exist(fileToLoad,'file'),
+                 if ~exist(fileToLoad,'file')
                     showTxt     = sprintf('Jaaba : Can not find file %s. Nothing is loaded.',fileToLoad);
                     DTP_ManageText([], showTxt, 'E' ,0) ;
                     return;
@@ -295,6 +308,134 @@ classdef TPA_DataManagerJaaba
         % ---------------------------------------------
 
         % ==========================================
+        function obj = SelectJabFile(obj,fileName)
+            % SelectJabFile - loads Jab File manual score data
+            % Input:
+            %     fileName - string path to the directory and file
+            % Output:
+            %     JaabaFileNames - cell array of names of the files
+            
+            if nargin < 2, fileName = fullfile(obj.EventDir,obj.JabFileName); end;
+            
+            % there was an error during load
+            if ~exist(fileName,'file'),
+                showTxt     = sprintf('Jaaba : Can not find jab file %s.',fileName);
+                DTP_ManageText([], showTxt, 'E' ,0) ;
+                return;
+            end;
+            try 
+                jb  = load(fileName,'-mat');            
+            catch merr
+                DTP_ManageText([], merr.message, 'E' ,0) ;
+                return
+            end
+            
+            if ~isa(jb.x,'Macguffin')
+                DTP_ManageText([], 'Not a Macguffin class', 'E' ,0) ;
+            end
+            
+            trialNum        = length(jb.x.labels);
+            if trialNum < 1,
+                showTxt = sprintf('Can not find Jab labels in %s. Check the Jaaba manual results.',fileName);
+                DTP_ManageText([], showTxt, 'E' ,0)   ;             
+                return
+            end;
+            classNum        = length(jb.x.behaviors.names);
+                        
+            
+            % output
+            obj.JaabaDir              = dirPath;
+            obj.JaabaDirNum           = trialNum;   % 
+            obj.JaabaFileClassNum     = classNum;   % classifier number
+            %obj.JaabaFileNames        = fileNamesC; % 2D
+            
+            obj.JabEventNames         = jb.x.behaviors.names;
+            obj.JabEventLabels        = jb.x.labels;
+            
+            obj.VideoFileNum          = trialNum;             % number of trials (avi movies) in Video/Image Dir
+            obj.VideoFileNames        = '';                  % file names in the Image directory
+            
+            
+            DTP_ManageText([], 'Jaaba : jab data file has been read successfully', 'I' ,0)   ;             
+            
+        end
+        % ---------------------------------------------
+        
+        
+        % ==========================================
+        function [obj, eventData] = LoadJabData(obj,currTrial)
+            % LoadJabData - loads manual score data from jab file
+            % Input:
+            %     currTrial - integer that specifies trial to load
+            % Output:
+            %     eventData   - roiLast cell array  
+            
+            if nargin < 2, currTrial = 1; end;
+            eventData       = {};
+            roiLast         = TPA_EventManager();
+            
+            
+            % there was an error during load
+            if obj.JaabaDirNum < 1,
+                showTxt     = sprintf('Jaaba : Can not find valid trials.');
+                DTP_ManageText([], showTxt, 'E' ,0) ;
+                return;
+            end;
+            
+            if obj.JaabaDirNum < currTrial,
+                showTxt     = sprintf('Jaaba : Requested trial %d exceeds Jaaba trial content.',currTrial);
+                DTP_ManageText([], showTxt, 'E' ,0) ;
+                return;
+            end
+            
+            % current labels
+            currLabels      = obj.JabEventLabels(currTrial);
+            eventNum        = length(currLabels.names);
+            dataLen         = currLabels.imp_t1s{1}(1);
+            if eventNum < 1,
+                DTP_ManageText([], sprintf('Jaaba : Trial %d - no maual class data.',currTrial), 'W' ,0)   ;                     
+            end
+            
+            
+            % get data from Jabba scores
+            eventCount       = 0;
+            for m = 1:eventNum,
+                
+                
+                
+                % start and end of the events - could be multiple
+                startInd        = currLabels.t0s{1}(m);
+                stopInd         = currLabels.t1s{1}(m);
+                
+                % detrmine if the length has minimal distance
+                eventDuration       = stopInd - startInd;
+                if any(eventDuration < 0),
+                    DTP_ManageText([], sprintf('Jaaba : Trial %d (%d)- can not determine event durations.',currTrial,m), 'E' ,0)   ;                     
+                    continue;
+                end
+
+                ii                  = 1;
+                pos                 = [startInd 50 eventDuration 150];
+                xy                  = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
+                roiLast.Color       = rand(1,3);   % generate colors
+                roiLast.Name        = sprintf('%s:%02d',currLabels.names{m},m); %jabData{m}.Name;
+                roiLast.SeqNum      = m;
+                roiLast.tInd        = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+                roiLast.yInd        = round([min(xy(:,2)) max(xy(:,2))]);  % time/frame indices
+                roiLast.Data        = zeros(dataLen,1);
+                roiLast.Data(startInd(ii):stopInd(ii))  = 1;
+
+                % save
+                eventCount           = eventCount + 1;
+                eventData{eventCount} = roiLast;
+            end
+
+            DTP_ManageText([], sprintf('Jaaba : Converting Jaaba to %d Events : Done',classNum), 'I' ,0)   ;             
+        end
+        % ---------------------------------------------
+        
+        
+        % ==========================================
         function [obj, eventData] = ConvertToAnalysis(obj,jabData)
             % ConvertToAnalysis - converts Jaaba data to Behavioral event format.
             % Get it ready for analysis directory for specific trial 
@@ -309,30 +450,18 @@ classdef TPA_DataManagerJaaba
             
             classNum        = length(jabData);
             eventData       = {};
-            
-            
-            % prepare ROI prototype 
-            roiLast.Type     = 1; % ROI_TYPES.RECT should be
-            roiLast.Active   = true;   % designates if this pointer structure is in use
-            roiLast.NameShow = false;       % manage show name
-            roiLast.zInd     = 1;           % location in Z stack
-            roiLast.tInd     = 1;           % location in T stack
-            pos              = [0 0 0.1 0.1];
-            xy               = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
-            roiLast.Position = pos;   
-            roiLast.xyInd    = xy;          % shape in xy plane
-            roiLast.Name     = 'Rect';
-            roiLast.TimeInd  = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
-            roiLast.SeqNum   = 1;           % designates Event number
+            roiLast          = TPA_EventManager();
             
             
             % get data from Jabba scores
             eventCount       = 0;
-            for m = 1:classNum,
+            clrMap           = jet(classNum);
+            for m = 1:classNum
                 
                 % actual time events
                 eventBool       = jabData{m}.postprocessed{1} > 0.5;
-                if ~any(eventBool), 
+                eventBool       = eventBool(:);
+                if ~any(eventBool) 
                     DTP_ManageText([], sprintf('Jaaba : No Events of type %s - nothing to convert.',jabData{m}.Name), 'W' ,0)   ;                     
                     continue
                 end
@@ -340,6 +469,15 @@ classdef TPA_DataManagerJaaba
                 % make sure to close all events
                 eventBool(1)    = false;
                 eventBool(end)  = false;
+                dataLen         = length(eventBool);
+                
+                % shift by offset
+                shiftFrames     = round(obj.Offset(4));
+                if shiftFrames > 0
+                    eventBool       = [eventBool(shiftFrames+1:dataLen); false(shiftFrames,1)];
+                elseif shiftFrames < 0
+                    eventBool       = [false(-shiftFrames,1); eventBool(1:dataLen+shiftFrames)];
+                end
                 
                 
                 % start and end of the events - could be multiple
@@ -353,26 +491,35 @@ classdef TPA_DataManagerJaaba
                 
                 % detrmine if the length has minimal distance
                 eventDuration       = stopInd(1:eventNum) - startInd(1:eventNum);
-                if any(eventDuration < 0),
+                if any(eventDuration < 0)
                     DTP_ManageText([], sprintf('Jaaba : Classifier %s (%d)- can not determine event durations.',jabData{m}.Name,m), 'E' ,0)   ;                     
                     continue;
                 end
                 
-                MinEventDuration        = 1; % frames
+                MinEventDuration        = 3; % frames
                 validInd                = find(eventDuration > MinEventDuration);
                 
                 % asssign
-                for k = 1:length(validInd),
+                for k = 1:length(validInd)
                     
                     ii                  = validInd(k);
                     pos                 = [startInd(ii) 50 eventDuration(ii) 150];
                     xy                  = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
-                    roiLast.Color       = rand(1,3);   % generate colors
-                    roiLast.Position    = pos;   
-                    roiLast.xyInd       = xy;          % shape in xy plane
+%                     roiLast.Color       = rand(1,3);   % generate colors
+%                     roiLast.Position    = pos;   
+%                     roiLast.xyInd       = xy;          % shape in xy plane
+%                     roiLast.Name        = sprintf('%s:%02d',jabData{m}.Name,k); %jabData{m}.Name;
+%                     roiLast.SeqNum      = k;
+%                     roiLast.TimeInd     = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+                    roiLast.Color       = clrMap(m,:);   % generate colors
+                    roiLast.Class       = m;           % designates which class
+                    %roiLast.xyInd       = xy;          % shape in xy plane
                     roiLast.Name        = sprintf('%s:%02d',jabData{m}.Name,k); %jabData{m}.Name;
                     roiLast.SeqNum      = k;
-                    roiLast.TimeInd     = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+                    roiLast.tInd        = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+                    roiLast.yInd        = round([min(xy(:,2)) max(xy(:,2))]);  % time/frame indices
+                    roiLast.Data        = zeros(dataLen,1);
+                    roiLast.Data(startInd(ii):stopInd(ii))  = 1;
                 
                     % save
                     eventCount           = eventCount + 1;
@@ -460,7 +607,6 @@ classdef TPA_DataManagerJaaba
             
         end
         % ---------------------------------------------
-        
 
         % ==========================================
         function obj = LoadJaabaExcelDataManual(obj,filePath)
@@ -550,8 +696,6 @@ classdef TPA_DataManagerJaaba
         end
         % ---------------------------------------------
         
-        
-        
         % ==========================================
         function [obj, eventData] = ConvertExcelToAnalysis(obj,currTrial)
             % ConvertExcelToAnalysis - converts Jaaba Excel data to Behavioral event format.
@@ -581,17 +725,18 @@ classdef TPA_DataManagerJaaba
             
             
             % prepare ROI prototype 
+            roiLast          = TPA_EventManager();
             roiLast.Type     = 1; % ROI_TYPES.RECT should be
             roiLast.Active   = true;   % designates if this pointer structure is in use
             roiLast.NameShow = false;       % manage show name
             roiLast.zInd     = 1;           % location in Z stack
-            roiLast.tInd     = 1;           % location in T stack
+            %roiLast.tInd     = 1;           % location in T stack
             pos              = [0 0 0.1 0.1];
             xy               = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
             roiLast.Position = pos;   
             roiLast.xyInd    = xy;          % shape in xy plane
             roiLast.Name     = 'Rect';
-            roiLast.TimeInd  = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+            roiLast.tInd     = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
             
             
             
@@ -619,7 +764,7 @@ classdef TPA_DataManagerJaaba
                 roiLast.Position    = pos;   
                 roiLast.xyInd       = xy;          % shape in xy plane
                 roiLast.Name        = sprintf('%s',jabData{m,k}.ClassName);
-                roiLast.TimeInd     = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+                roiLast.tInd        = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
 
                 % save
                 eventCount           = eventCount + 1;
@@ -629,7 +774,6 @@ classdef TPA_DataManagerJaaba
             DTP_ManageText([], sprintf('Jaaba : Converting Jaaba Trial %d with %d Events : Done',currTrial,eventCount), 'I' ,0)   ;             
         end
         % ---------------------------------------------
-        
         
         % ==========================================
         function [obj, CheckOK] = CheckData(obj)

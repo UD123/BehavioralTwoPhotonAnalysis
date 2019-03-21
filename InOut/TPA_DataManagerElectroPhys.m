@@ -14,6 +14,13 @@ classdef TPA_DataManagerElectroPhys
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 24.07 25.10.16 UD     Fadi frame sync is inverted + fixing number of frames
+    % 23.16 28.06.16 UD     bug fix with Max Frame Num
+    % 23.07 12.03.16 UD     maxFileNum is tested again
+    % 22.02 12.01.16 UD     Suppress warning
+    % 22.02 12.01.16 UD     Suppress warning
+    % 22.01 05.01.16 UD     Created
+    % 22.00 05.01.16 UD     Created from TPA_DataManagerBehavior and TwoPhotonTSeries_1604
     % 18.00 08.04.14 UD     Created  
     % 17.08 05.04.14 UD     adding clean  
     % 16.11 22.02.14 UD     analysis file name load fix
@@ -29,16 +36,23 @@ classdef TPA_DataManagerElectroPhys
         VideoDir                     = '';           % directory of the Front and Side view image Data
         EventDir                     = '';           % directory where the user Analysis data is stored
        
-        VideoFileNum                = 0;             % number of trials (tiff movies) in Video/Image Dir
-        VideoFileNames              = {};            % file names in the cell Image directory
-        VideoDataSize               = [];             % data dimensions in a single trial
-        VideoFilePattern            = '*.tif';       % expected name for video pattern
-        VideoDirFilter              = 'TSeries*';    % helps to separate folders
+        VideoDirPattern             = 'TSeries*';    % helps to separate folders
         VideoDirNum                 = 0;
         VideoDirNames              = {};             % dir names in the TSeries Image directory
+        VideoFileNum                = 0;             % number of trials (tiff movies) in Video/Image Dir
+        VideoFileNames              = {};            % file names in the cell Image directory
+        VideoFilePattern            = '*_Ch2_*.tif';       % expected name for video pattern
+        VideoDataSize               = [];             % data dimensions in a single trial
+        VideoIndex                  = [];            % trial index extracted from file number
+        VideoFrameNum               = 0;             % number of frames 
         
-        %RecordData                  = [];
+        % ElectroPhys
+        SampleTime                  = 1e3;          % stimulus sampling time
+        RecordValues                = [];            % contains records for different channels
+        FrameStart                  = [];
+        ChanNames                   = {};           % names of the channels
         
+        % Analysis
         EventFileNum                = 0;                % numer of Analysis mat files
         EventFileNames              = {};               % file names of Analysis mat files
         EventFilePattern            = 'BDA_*.mat';      % expected name for analysis
@@ -59,11 +73,6 @@ classdef TPA_DataManagerElectroPhys
         SliceNum                   = 1;             % if Z slice = 2 - two Z volumes are generated, 3 - 3 volumes
         
     end % properties
-%     properties (SetAccess = private)
-%         %dbgShowErrorMsgGui      = true;          % show error messages
-%     end
-%     properties (Dependent)
-%     end
 
     methods
         
@@ -82,7 +91,6 @@ classdef TPA_DataManagerElectroPhys
 %             obj.DecimationFactor = max(1,min(16,round(obj.DecimationFactor)));
 %             
         end
-        % ---------------------------------------------
         
         % ==========================================
         function obj = Clean(obj)
@@ -93,17 +101,24 @@ classdef TPA_DataManagerElectroPhys
             %     default values
             obj.VideoDir                     = '';           % directory of the Front and Side view image Data
             obj.EventDir                     = '';           % directory where the user Analysis data is stored
-            obj.VideoFileNum                = 0;             % number of trials (tiff movies) in Video/Image Dir
-            obj.VideoFileNames              = {};            % file names in the cell Image directory
-            obj.VideoDataSize               = [];             % data dimensions in a single trial
-            obj.VideoFilePattern            = '*.tif';       % expected name for video pattern
-            obj.VideoDirFilter              = 'TSeries*';    % helps to separate folders
+            obj.VideoDirPattern             = 'TSeries*';    % helps to separate folders
             obj.VideoDirNum                 = 0;
             obj.VideoDirNames              = {};             % dir names in the TSeries Image directory
+            obj.VideoFileNum                = 0;             % number of trials (tiff movies) in Video/Image Dir
+            obj.VideoFileNames              = {};            % file names in the cell Image directory
+            obj.VideoFilePattern            = '*_Ch2_*.tif';       % expected name for video pattern
+            obj.VideoDataSize               = [];             % data dimensions in a single trial
+            
+            obj.SampleTime                  = 1e3;              % sample time init value
+            obj.RecordValues                = [];            % contains records for different channels
+            obj.FrameStart                  = [];
+            obj.ChanNames                   = {};           % names of the channels
+            
+            
             obj.EventFileNum                = 0;                % numer of Analysis mat files
             obj.EventFileNames              = {};               % file names of Analysis mat files
             obj.EventFilePattern            = 'BDA_*.mat';      % expected name for analysis
-            obj.VideoFileNum               = 0;             % number of trials (avi movies) in Side or Front views
+            
             obj.Trial                      = 0;             % current trial
             obj.ValidTrialNum              = 0;             % summarizes the number of valid trials
             obj.Resolution                 = [1 1 1 1];     % um/pix um/pix um/pix-else  frame/sec
@@ -112,7 +127,6 @@ classdef TPA_DataManagerElectroPhys
             obj.SliceNum                   = 1;             % if Z slice = 2 - two Z volumes are generated, 3 - 3 volumes
             
         end
-        % ---------------------------------------------
         
         
          % ==========================================
@@ -122,7 +136,7 @@ classdef TPA_DataManagerElectroPhys
              isOK = false;
              
              if trial < 1 || trial > obj.ValidTrialNum,
-                 DTP_ManageText([], sprintf('Trial value %d is out of range. No action taken.',trial), 'E' ,0);
+                 DTP_ManageText([], sprintf('Electro : Trial value %d is out of range. No action taken.',trial), 'E' ,0);
                  return;
              end
              isOK       = true;
@@ -130,18 +144,13 @@ classdef TPA_DataManagerElectroPhys
          end % set.Trial
        
         % ==========================================
-         function [obj,isOK] = SetSliceNum(obj,sliceNum)
+         function [obj,isOK] = SetSampleRate(obj,sampRate)
              % how many slices to split
-%              if obj.VideoFileNum < 1,
-%                  DTP_ManageText([], sprintf('No video data found. May be you need to load your video files.'), 'E' ,0);
-%                  return;
-%              end
              isOK                   = true;
-             obj.SliceNum           = sliceNum;
-             DTP_ManageText([], sprintf('Slice Number is : %d',sliceNum), 'I' ,0);
+             obj.SampleTime         = 1/sampRate;
+             DTP_ManageText([], sprintf('Sample Rate is : %d Hz',sampRate), 'I' ,0);
              
          end
-         
          
          % ==========================================
          function [obj,isOK] = SetResolution(obj,resolValues)
@@ -173,8 +182,6 @@ classdef TPA_DataManagerElectroPhys
              obj.Resolution   = resolValues;
              DTP_ManageText([], sprintf('Resolution is : %d [um/pix] %d [um/pix] %d [um/frame] %d [frame/sec]',resolValues), 'I' ,0);
          end % set.Resolution
-         
-         
          
          % ==========================================
          function [obj,isOK] = SetDecimation(obj,decimFactor)
@@ -212,10 +219,74 @@ classdef TPA_DataManagerElectroPhys
              DTP_ManageText([], sprintf('Decimation is : %d-[X] %d-[Y] %d-[Z] %d-[T]',decimFactor), 'I' ,0);
          end % set.Decimation
          
-         
+         % ==========================================
+         function [obj,isOK] = GuiSelectTrial(obj)
         
+        % obj - data managing object
+        if nargin < 1, error('Must input Data Managing Object'); end
+        
+        isOK                = false; % support next level function
+        options.Resize      ='on';
+        options.WindowStyle ='modal';
+        options.Interpreter ='none';
+        prompt              = {sprintf('Enter trial number between %d:%d',1,obj.ValidTrialNum)};
+        name                ='Choose trial to load';
+        numlines            = 1;
+        defaultanswer       ={num2str(obj.Trial)};
+        
+        answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
+        if isempty(answer), return; end;
+        trialInd           = str2double(answer{1});
+        
+        % check validity
+        [obj,isOK]        = obj.SetTrial(trialInd);
+        
+%         if~isequal(Par.DMT.Trial,Par.DMB.Trial), 
+%             DTP_ManageText([], 'TwoPhoton and Behavior datasets have different trials numbers', 'W' ,0)   ;             
+%         end
+        
+         end        
+         
+         % ==========================================
+         function [obj,isOK] = GuiSetDataParameters(obj)
+            
+            % obj - data managing object
+            if nargin < 1, error('Must input Data Managing Object'); end
+            
+            % config small GUI
+            isOK                  = false; % support next level function
+            sampleRate           = 1./obj.SampleTime;
+            
+            options.Resize          = 'on';
+            options.WindowStyle     ='modal';
+            options.Interpreter     ='none';
+            prompt                  = {'Data Resolution [X [um/pix] Y [um/pix] Z [um/frame] T [frame/sec]',...
+                'Data Decimation Factor [X [(int>0)] Y [(int>0)] Z [(int>0)] T [(int>0)]',...
+                'Data Offset (N.A.)    [X [um] Y [um] Z [um] T [frame] ',...
+                'Sampling Rate [10:100000] Hz',...
+                };
+            name                ='Config Data Parameters';
+            numlines            = 1;
+            defaultanswer       ={num2str(obj.Resolution),num2str(obj.DecimationFactor),num2str(obj.Offset),num2str(sampleRate)};
+            answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
+            if isempty(answer), return; end
+            
+            
+            % try to configure
+            res                 = str2num(answer{1});
+            [obj,isOK1]         = obj.SetResolution(res) ;
+            dec                 = str2num(answer{2});
+            [obj,isOK2]         = obj.SetDecimation(dec) ;
+            isOK                = isOK1 && isOK2;
+            slc                 = str2num(answer{4});
+            [obj,isOK2]         = obj.SetSampleRate(slc) ;
+            isOK                = isOK1 && isOK2;
+            
+            
+        end
+         
         % ==========================================
-        function obj = SelectElectroPhysData(obj,dirPath)
+        function obj = SelectElectroPhysDataOld(obj,dirPath)
             % SelectElectroPhysData - determine data folders in the current
             % experiment
             % Input:
@@ -305,11 +376,9 @@ classdef TPA_DataManagerElectroPhys
             DTP_ManageText([], sprintf('ElectroPhys : %d trial data has been read successfully.',trialNum), 'I' ,0)   ;             
         
         end
-        % ---------------------------------------------
-        
         
         % ==========================================
-        function [obj, recordData] = LoadElectroPhysData(obj,currTrial, figNum)
+        function [obj, recordData] = LoadElectroPhysDataOld(obj,currTrial, figNum)
             % LoadTwoPhotonData - loads currTrial image data into memory
             % Input:
             %     currTrial - integer that specifies trial to load
@@ -347,7 +416,552 @@ classdef TPA_DataManagerElectroPhys
             DTP_ManageText([], sprintf('ElectroPhys : %5.3f sec data from trial %s is loaded successfully',recordTime, dirPathTrial), 'I' ,0)   ;
             
         end
-        % ---------------------------------------------
+        
+        % ==========================================
+        function obj = SelectElectroPhysData(obj,dirPath)
+            % SelectStimulusData - selects stimulus data files from TwoPhoton dir
+            % Input:
+            %     dirPath - string path to the directory
+            % Output:
+            %     VideoFileDir   - cell array of dir of the files
+            %     VideoFileNames - cell array of names of the files
+            
+            if nargin < 2, dirPath = pwd; end
+            
+            % check
+            if ~exist(dirPath,'dir')
+                showTxt     = sprintf('Can not find directory %s',dirPath);
+                DTP_ManageText([], showTxt, 'E' ,0)
+                return
+            end
+            
+            % detect all the directories
+            dirStr          = dir(fullfile(dirPath,obj.VideoDirPattern));
+            dirNum          = length(dirStr);
+            if dirNum < 1
+                DTP_ManageText([], sprintf('Can not find directories with pattern %s in directory %s',obj.VideoDirPattern,dirPath), 'E' ,0)
+                return;
+            end
+            
+            % check files in all directories
+            videoFileDirs   = cell(1,dirNum);
+            videoFileNames  = cell(1,dirNum);
+            emptyDirInd = []; maxFileNum = 0;
+            for k = 1:dirNum
+                
+                % new path
+                dirPathTrial    = fullfile(dirPath,dirStr(k).name);
+                
+                % tiff file load
+                fileNames        = dir(fullfile(dirPathTrial,obj.VideoFilePattern));
+                fileNum          = length(fileNames);
+                if fileNum < 1
+                    showTxt = sprintf('Can not find image *.tif in the directory %s. Skipping it. Check the directory name or directory is empty.',dirPathTrial);
+                    DTP_ManageText([], showTxt, 'W' ,0)   ;
+                    emptyDirInd = [emptyDirInd k];
+                    continue;
+                end
+                
+                % init & check
+                maxFileNum          = max(maxFileNum , fileNum);
+                    
+                % tiff file load
+                fileNames        = dir(fullfile(dirPathTrial,'*.csv'));
+                fileNum          = length(fileNames);
+                if fileNum < 1,
+                    showTxt = sprintf('Can not find stimulus *.csv in the directory %s. Skipping it. Check the directory name or directory is empty.',dirPathTrial);
+                    DTP_ManageText([], showTxt, 'W' ,0)   ;
+                    emptyDirInd = [emptyDirInd k];
+                    continue;
+                end;
+                
+ 
+                % Load Channel - Electro Phys
+                chanNum                 = 1;
+                
+                % save
+                videoFileDirs{1,k}      = dirPathTrial;
+                videoFileNames{1,k}     = fileNames(chanNum).name;
+            end
+            
+            % check empty or bad file number directories
+            if ~isempty(emptyDirInd)
+                videoFileDirs(emptyDirInd)      = [];
+                videoFileNames(emptyDirInd)     = [];
+                dirNum                          = size(videoFileNames,2);
+                DTP_ManageText([], sprintf('ElectroPhys : Empty Dirs found %s. Adjusting number of valid directories. Total %d found.',num2str(emptyDirInd),dirNum), 'W' ,0)   ;
+            end
+            % Fix
+            frameNum                 = maxFileNum;
+            maxFileNum               = length(videoFileNames);
+            
+            % output
+            obj.VideoDir              = dirPath;
+            obj.VideoDirNames         = videoFileDirs;
+            obj.VideoDirNum           = dirNum;
+            obj.VideoFileNames        = videoFileNames;
+            obj.VideoFileNum          = maxFileNum;
+            obj.VideoFrameNum         = frameNum;
+            
+            DTP_ManageText([], sprintf('ElectroPhys : %d trial data has been read successfully',dirNum), 'I' ,0)   ;
+        end
+         
+        % ==========================================
+        function obj = LoadElectroPhysData(obj,currTrial)
+            % LoadStimulusData - loads currTrial stimulus data into memory
+            % Input:
+            %     currTrial - integer that specifies trial to load
+            %     fileDescriptor - string that could be 'side' / 'front' or 'all' or 'comb'
+            % Output:
+            %     imgData   - 3D array image data when 3'd dim is a channel front or side
+            
+            if nargin < 2, currTrial = 1; end;
+            
+            fileNamesC = obj.VideoFileNames ;
+            fileNum    = obj.VideoFileNum;
+            dirNum     = obj.VideoDirNum;
+            dirNames   = obj.VideoDirNames;
+            dirPath    = obj.VideoDir;
+            
+            
+            % check
+             if fileNum < 1
+                showTxt     = sprintf('ElectroPhys : No data found. Aborting');
+                DTP_ManageText([], showTxt, 'E' ,0) ;
+                return;
+             end
+            if currTrial < 1 || currTrial > dirNum,
+                showTxt     = sprintf('ElectroPhys : Trial is out of range %s. Loading trial 1.',currTrial);
+                DTP_ManageText([], showTxt, 'E' ,0)
+                currTrial = 1;
+            end
+            
+            % csv file load
+            dirTrial            = dirNames{currTrial};
+            fileDirName         = fullfile(dirTrial,fileNamesC{currTrial});
+            if ~exist(fileDirName,'file')
+                DTP_ManageText([], sprintf('ElectroPhys : Can not locate file %s. Please check.',fileDirName), 'E' ,0)   ;  
+                return
+            else
+                % inform
+                DTP_ManageText([], sprintf('ElectroPhys : Loading data from file %s. Please Wait ...',fileNamesC{currTrial}), 'I' ,0)   ;             
+            end
+            
+            % read csv data
+            warning('off','MATLAB:iofun:UnsupportedEncoding'); % do not show warning
+            recordedValues          = csvread(fileDirName,1,0);
+            [recordNum,chanNum]      = size(recordedValues);
+            if chanNum < 2
+               error('Bad records in csv file. Do not have data') 
+            end
+
+            % do not need time 
+            recordTime              = recordedValues(end,1);
+            sampTime                = median(diff(recordedValues(:,1)))./1000; % in msec
+            recordedValues          = recordedValues(:,2:end);
+            chanNum                 = chanNum - 1;
+
+            % load additional params
+            xmlFileLoc              = strrep(fileDirName,'.csv','.xml');
+            s                       = xml_read(xmlFileLoc);
+
+            % Freq os the sampling
+            stimSampleRate          = s.Experiment.Rate; % Rate is like time Yoav's code
+            stimSampleTime          = 1/stimSampleRate;
+
+            % time required by DTP_FindFrameSync
+            if abs(sampTime - stimSampleTime) > 1e-3
+               DTP_ManageText([],'Sampling times do not match. Problems with data files. Trying to continue.','W');
+            end
+            
+            % find frame sync
+            %parTmp.syncType            = 'System 2014'; %'Resonant 2014';
+            %parTmp.syncType            = 'Prarie 2018'; %'Resonant 2014';
+            parTmp.syncType            = 'Prarie 1 channel'; %
+            parTmp.stimSampleTime      = stimSampleTime;
+            parTmp.frameNum            = obj.VideoFrameNum;
+            parTmp.recordTime          = recordTime;
+            [parTmp,frameStart, recordedValues]        = TPA_FindFrameSync(parTmp,recordedValues,0)  ;
+            
+            % adjust to image row number
+            % blank_num                   = min(blank_num,height);
+            %blankValuesNum  = numel(blankValues );
+            blankImNum                      = length(frameStart);
+            imNum                           = obj.VideoFrameNum;
+            if imNum < blankImNum
+                txt = sprintf('Image number is less than blank number. Cutting blanks.');
+                DTP_ManageText([], txt,   'W' ,0);
+                blankImNum                  = imNum;
+                frameStart                  = frameStart(1:blankImNum);
+            end
+            if imNum > blankImNum
+                txt = sprintf('There are more images than blanks. Cutting images.');
+                DTP_ManageText([], txt,   'E' ,0);
+            end
+
+
+            DTP_ManageText([], sprintf('ElectroPhys : Image number found    : %d',imNum),     'I' ,0)
+            DTP_ManageText([], sprintf('ElectroPhys : Image blank number    : %d',blankImNum),'I' ,0)
+            DTP_ManageText([], sprintf('ElectroPhys : Physiology total time : %5.2f [sec]',recordNum*stimSampleTime),  'I' ,0)
+
+                        
+            % output
+            obj.Trial                       = currTrial;
+            obj.SampleTime                  = stimSampleTime;
+            obj.RecordValues                = recordedValues;            % contains records for different channels
+            obj.FrameStart                  = frameStart;
+            obj.ChanNames                   = parTmp.chanName;           % names of the channels
+            
+             
+            DTP_ManageText([], sprintf('ElectroPhys : stimulus from file %s are loaded successfully',fileNamesC{currTrial}), 'I' ,0)   ;             
+        end
+        
+        % ==========================================
+        function obj = ShowRecordData(obj, figNum)
+            % ShowRecordData - checks and shows record data for all channels
+            % Input:
+            %     RecordValues - NxD array 
+            % Output:
+            %     show 
+            if nargin < 2, figNum = 101; end
+        
+
+            % show all data
+            if figNum < 1, return; end;
+            [recordNum,chanNum]      = size(obj.RecordValues);
+            if chanNum < 1
+                txt = sprintf('Please load data first.');
+                DTP_ManageText([], txt,   'E' ,0);
+                return
+            end
+
+            % params
+            recordedValues = obj.RecordValues;
+            stimSampleTime = obj.SampleTime;
+            chanName    = obj.ChanNames;
+            chanNum     = length(chanName);
+            frameStart  = obj.FrameStart;
+            tt          = (1:recordNum)'*stimSampleTime;
+            
+            
+            %frameStart  = FrameStart; %ft_ind(1:height:blank_num);
+            %frameMarks  = zeros(size(tt));
+
+            figure(figNum),set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none')
+            plot(tt, recordedValues),
+            hold on;
+            stem(tt(frameStart),frameStart*0+.6,'w')
+            hold off;
+            title('Electro Data')
+            %xlabel('Sample number'),
+            xlabel('Time [sec]'),
+            ylabel('Channel [Volt]')
+            chanName{chanNum+1} = 'Frame Start';
+            legend(chanName)
+
+            
+           
+        end
+               
+        % ==========================================
+        function [obj,PiezoData] = ClusterPiezoData(obj, figNum)
+            % ClusterPiezoData - extracts events from piezo data
+            % Input:
+            %     RecordValues - NxD array 
+            % Output:
+            %     Piezo Events clustered 
+            if nargin < 2, figNum = 101; end
+            PiezoData = [];
+
+            % show all data
+            [recordNum,chanNum]      = size(obj.RecordValues);
+            if chanNum < 1,
+                txt = sprintf('Please load data first.');
+                DTP_ManageText([], txt,   'E' ,0);
+                return
+            end
+            
+            
+
+            % params
+            recordedValues  = obj.RecordValues;
+            stimSampleTime  = obj.SampleTime;
+            chanName        = obj.ChanNames;
+            frameStart      = obj.FrameStart;
+            tt              = (1:recordNum)'*stimSampleTime;
+            voltThr         = 1; % low values for Piezo
+            
+            i1              = strcmpi(chanName,'Piezo 1');
+            i2              = strcmpi(chanName,'Piezo 2');
+            
+            % find continuous segments where the piezo is active
+            piezoValues     = recordedValues(:,i1 | i2);
+            piezoValuesAbs  = abs(piezoValues);
+            enrgyPiezo      = sum(piezoValuesAbs,2);
+            
+            
+            % filter and find peaks
+            alpha           = 0.001;
+            enrgyPiezoFilt  = filtfilt(alpha,[1 -(1-alpha)],enrgyPiezo);
+            [pks,loc]       = findpeaks(enrgyPiezoFilt,'MinPeakHeight',voltThr);
+            
+            % cluster - they are all in differnet directions and also zero
+            nonZeroBool     = piezoValuesAbs(loc,:) > voltThr;
+            piezoSign       = sign(piezoValues(loc,:)) .* double(nonZeroBool); 
+            piezoSign       = piezoSign + 1; % make it positive or zero
+            piezoEncode     = piezoSign(:,1)*3 + piezoSign(:,2);
+            
+            % check
+            piezoNum        = numel(piezoEncode);
+            %if numel(piezoEncode) ~= 8,
+            DTP_ManageText([], sprintf('ElectroPhys : Found %d Piezo Angles.',piezoNum),   'I' ,0);
+            if piezoNum < 1,
+                return
+            end
+            
+             % estimate half width of piezo values
+            sampNumHalf     = round(sum(enrgyPiezo > voltThr)/piezoNum/2);
+           
+            
+            % output
+            PiezoData       = [loc-sampNumHalf loc+sampNumHalf piezoEncode];
+            
+            %frameStart  = FrameStart; %ft_ind(1:height:blank_num);
+            %frameMarks  = zeros(size(tt));
+
+            
+                        
+            if figNum < 1, return; end;
+
+            figure(figNum),set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none')
+            plot(tt, recordedValues),
+            hold on;
+            plot(tt,enrgyPiezo,'m');
+            plot(tt(loc),pks,'wo');
+            text(tt(loc),pks+0.5,num2str(piezoEncode(:)),'color','y');
+            hold off;
+            title('ElectroPhys Data and Extracted Events')
+            %xlabel('Sample number'),
+            xlabel('Time [sec]'),
+            ylabel('Channel [Volt]')
+            chanName{chanNum+1} = 'Energy';
+            chanName{chanNum+2} = 'Peaks';
+            legend(chanName)
+
+            
+           
+        end
+        
+        % ==========================================
+        function [obj, eventData] = ConvertToAnalysis(obj,piezoData)
+            % ConvertToAnalysis - converts Stimulus data to Behavioral event format.
+            % Get it ready for analysis directory for specific trial 
+            % Input:
+            %     piezoData   - 8 x 3 array of start,stop and Id for specific trial
+            % Output:
+             %     eventData   - event structure information for specific trial
+            %                   classiiers are subfields  
+           
+            if nargin < 2, error('Requires 2nd argument'); end;
+            
+            
+            eventData       = {};
+            if size(piezoData,2) ~= 3, 
+                DTP_ManageText([], sprintf('ElectroPhys : Bad event %d durations.',obj.Trial), 'E' ,0)   ;   
+                return;
+            end
+            classNum        = size(piezoData,1);
+            %eventData       = {};
+            roiLast          = TPA_EventManager();
+            dataLen          = size(obj.RecordValues,1);
+           
+            % get data from Jabba scores
+            for m = 1:classNum,
+                
+                % start and end of the events - could be multiple
+                startInd        = piezoData(m,1);
+                stopInd         = piezoData(m,2);
+                eventName       = sprintf('angle_%d',piezoData(m,3));
+                
+                % detrmine if the length has minimal distance
+                eventDuration       = stopInd - startInd;
+                if any(eventDuration < 0),
+                    DTP_ManageText([], sprintf('ElectroPhys : Bad event %d durations.',m), 'E' ,0)   ;                     
+                    continue;
+                end
+                
+                    
+                pos                 = [startInd 50 eventDuration 150];
+                xy                  = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
+                roiLast.Color       = rand(1,3);   % generate colors
+                %roiLast.Position    = pos;   
+                %roiLast.xyInd       = xy;          % shape in xy plane
+                roiLast.Name        = eventName; %jabData{m}.Name;
+                roiLast.SeqNum      = m;
+                roiLast.tInd        = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+                roiLast.yInd        = round([min(xy(:,2)) max(xy(:,2))]);  % time/frame indices
+                roiLast.Data        = zeros(dataLen,1);
+                roiLast.Data(startInd:stopInd,1)  = 1;
+
+                % save
+                eventData{m}        = roiLast;
+            end
+
+            DTP_ManageText([], sprintf('ElectroPhys : Converting Piezo to %d Events : Done',classNum), 'I' ,0)   ;             
+        end
+        
+        % ==========================================
+        function obj = ImportEventsLiora(obj,dirPath)
+            % ImportEvents - creates Events from Piezo data
+            % Input:
+            %     dirPath       - string path to the directory
+            % Output:
+            %     BDA files   - cell array of dir of the files
+            
+            if nargin < 2, dirPath = pwd; end;
+            
+            % do load and convert
+            obj             = SelectAllData(obj,dirPath);
+            for trialInd = 1:obj.VideoDirNum,
+
+                obj             = LoadElectroPhysData(obj,trialInd);
+                obj             = ShowRecordData(obj, 0);
+                [obj,pData]     = ClusterPiezoData(obj, 10);
+                [obj,strEvent]  = ConvertToAnalysis(obj, pData);
+                obj             = SaveAnalysisData(obj,trialInd,'strEvent',strEvent);
+
+            end
+            
+            
+        end        
+        
+        % ==========================================
+        function [obj, eventData] = ConvertElectroPhysToEvents(obj)
+            % ConvertElectroPhysToEvents - converts Electr Phys data to Behavioral event format.
+            % Get it ready for analysis directory for specific trial 
+            % Input:
+            %     RecordValues   - N x 6 record
+            % Output:
+             %     eventData   - event structure information for specific trial
+            %                   classiiers are subfields  
+           
+            %if nargin < 2, error('Requires 2nd argument'); end;
+            
+
+            % params
+            recordedValues  = obj.RecordValues;
+            stimSampleTime  = obj.SampleTime;
+            chanName        = obj.ChanNames;
+            %frameStart      = obj.FrameStart;
+            %tt              = (1:recordNum)'*stimSampleTime;
+            
+            i1              = strcmpi(chanName,'Electrophysiology');
+            
+            % find continuous segments where the piezo is active
+            electroValues   = recordedValues(:,i1);            
+            
+%             % filter and find peaks
+%             alpha           = 0.001;
+%             enrgyPiezoFilt  = filtfilt(alpha,[1 -(1-alpha)],enrgyPiezo);
+%             [pks,loc]       = findpeaks(enrgyPiezoFilt,'MinPeakHeight',voltThr);
+            
+            
+            
+            eventData       = {};
+            if size(electroValues,1) < 3, 
+                DTP_ManageText([], sprintf('ElectroPhys : Bad event %d durations.',obj.Trial), 'E' ,0)   ;   
+                return;
+            end
+            classNum        = size(electroValues,2);
+            %eventData       = {};
+            roiLast          = TPA_EventManager();
+            dataLen          = size(obj.RecordValues,1);
+           
+            % get data from Jabba scores
+            for m = 1:classNum,
+                
+                % start and end of the events - could be multiple
+                startInd        = 100; %piezoData(m,1);
+                stopInd         = 1./stimSampleTime; %piezoData(m,2);
+                eventName       = sprintf('ElectroPhys_%d',m);
+                
+                % detrmine if the length has minimal distance
+                eventDuration       = stopInd - startInd;
+                if any(eventDuration < 0),
+                    DTP_ManageText([], sprintf('ElectroPhys : Bad event %d durations.',m), 'E' ,0)   ;                     
+                    continue;
+                end
+                
+                    
+                pos                 = [startInd 50 eventDuration 150];
+                xy                  = repmat(pos(1:2),5,1) + [0 0;pos(3) 0;pos(3) pos(4); 0 pos(4);0 0];
+                roiLast.Color       = rand(1,3);   % generate colors
+                %roiLast.Position    = pos;   
+                %roiLast.xyInd       = xy;          % shape in xy plane
+                roiLast.Name        = eventName; %jabData{m}.Name;
+                roiLast.SeqNum      = m;
+                roiLast.tInd        = round([min(xy(:,1)) max(xy(:,1))]);  % time/frame indices
+                roiLast.yInd        = round([min(xy(:,2)) max(xy(:,2))]);  % time/frame indices
+                roiLast.Data        = electroValues;
+                %roiLast.Data(startInd:stopInd,1)  = 1;
+
+                % save
+                eventData{m}        = roiLast;
+            end
+
+            DTP_ManageText([], sprintf('ElectroPhys : Converting Piezo to %d Events : Done',classNum), 'I' ,0)   ;             
+        end
+        
+        
+        % ==========================================
+        function obj = ImportEventsElectroPhys(obj,dirPath)
+            % ImportEventsElectroPhys - creates Events from Electro Phys data - one event
+            % Input:
+            %     dirPath       - string path to the directory
+            % Output:
+            %     BDA files   - cell array of dir of the files
+            
+            if nargin < 2, dirPath = pwd; end
+            
+            % do load and convert
+            obj             = SelectAllData(obj,dirPath);
+            for trialInd = 1:obj.VideoDirNum
+
+                obj             = LoadElectroPhysData(obj,trialInd);
+                obj             = ShowRecordData(obj, 0);
+                [obj,strEvent]  = ConvertElectroPhysToEvents(obj);
+                
+                % clean 50 Hz and more
+                peakNum         = 4;
+                s               = strEvent{1,1}.Data;
+                Fs              = 10e3;
+                pf              = fft(s);
+                f               = ((0:numel(pf)-1)./numel(pf))*Fs;
+                apf             = abs(pf); apf(f<40) = 0; apf(f > Fs-40) = 0;
+                [ppeak,ploc,pw] = findpeaks(apf,'SortStr','descend','NPeaks',peakNum*2,'MinPeakDistance',100);
+                figure(64),semilogy(f,apf,'b',f(ploc),ppeak,'og',f(ploc-3),ppeak,'<r',f(ploc+3),ppeak,'>r');
+                title('Signal with rejection bands');
+                % reject
+                for dt = -3:3 
+                    pf(ploc+dt) = 0; 
+                end
+                sr               = real(ifft(pf));
+                strEvent{1,1}.Data = sr; 
+                figure(65),plot(s,'b'); hold on; plot(sr,'r'); hold off;
+                title('Signal Before and After filtering');
+                
+                % save
+                obj             = SaveAnalysisData(obj,trialInd,'strEvent',strEvent);
+
+            end
+            
+            
+        end        
+        
+    end
+    
+    % Analysis
+    methods
         
         % ==========================================
         function obj = SelectAnalysisData(obj,dirPath)
@@ -359,6 +973,12 @@ classdef TPA_DataManagerElectroPhys
             %     EventFileNames - cell array of names of the files
             
             if nargin < 2, dirPath = pwd; end;
+            
+            if isempty(dirPath), 
+                DTP_ManageText([], 'ElectroPhys :  Path is not specified', 'E' ,0)
+                return; 
+            end;
+            
             
             % check
             if ~exist(dirPath,'dir'),
@@ -395,7 +1015,6 @@ classdef TPA_DataManagerElectroPhys
             DTP_ManageText([], 'ElectroPhys : Analysis data has been read successfully', 'I' ,0)   ;             
             
         end
-        % ---------------------------------------------
         
        % ==========================================
         function [obj, fileName] = GetAnalysisFileName(obj,currTrial)
@@ -406,25 +1025,31 @@ classdef TPA_DataManagerElectroPhys
             %     fileName   - analysis file name no path
             
             % take any active channel and strip off the name
+            % take any active channel and strip off the name
             fileName = '';
             
+                        
+            % check if the analysis has been done before
+            if obj.EventFileNum > 0 && obj.EventFileNum >= currTrial,
+                if ~isempty(obj.EventFileNames{currTrial}),
+                    fileName        = obj.EventFileNames{currTrial} ;
+                    return
+                end
+            else
+                %DTP_ManageText([], sprintf('Behavior \t: No Event file name are found. Trying to determine them from Video data.'), 'W' ,0) ;
+            end
+            
             % take any active channel and strip off the name
-            if obj.VideoFrontFileNum > 0,
-                fileName        = obj.VideoFrontFileNames{currTrial} ;
-                fileDescriptor  = 'front';
-            elseif obj.VideoSideFileNum > 0,
-                fileName        = obj.VideoSideFileNames{currTrial}  ;
-                fileDescriptor  = 'side';
+            if obj.VideoFileNum > 0,
+                fileName        = obj.VideoFileNames{currTrial} ;
             else
                 DTP_ManageText([], sprintf('ElectroPhys : Event : No video files. Need to load video first.'), 'E' ,0) ;
                 return
             end
             
              % get prefix and siffix position : there is a directory name before
-             pPos       = strfind(fileName,fileDescriptor) ;
-             pPos       = pPos + length(fileDescriptor) + 1;
-             sPos       = strfind(fileName,'.avi');
-             experName  = fileName(pPos:sPos-1);
+             sPos       = strfind(fileName,'.csv');
+             experName  = fileName(1:sPos-1);
 
              % deal with crasy names like . inside
              experName   = regexprep(experName,'[\W+]','_');
@@ -433,7 +1058,6 @@ classdef TPA_DataManagerElectroPhys
              fileName   = regexprep(obj.EventFilePattern,'*',experName);
                         
         end
-        
         
         % ==========================================
         function [obj, usrData] = LoadAnalysisData(obj,currTrial, strName)
@@ -481,9 +1105,8 @@ classdef TPA_DataManagerElectroPhys
             obj.EventFileNames{currTrial}  = fileName;
             obj.ValidTrialNum              = max(obj.ValidTrialNum,currTrial);
                 
-            DTP_ManageText([], sprintf('Analysis data from file %s has been loaded successfully',obj.EventFileNames{currTrial}), 'I' ,0)   ;             
+            DTP_ManageText([], sprintf('ElectroPhys : Analysis data from file %s has been loaded successfully',obj.EventFileNames{currTrial}), 'I' ,0)   ;             
         end
-        % ---------------------------------------------
         
         % ==========================================
         function [obj, usrData] = SaveAnalysisData(obj,currTrial,strName,strVal)
@@ -501,10 +1124,10 @@ classdef TPA_DataManagerElectroPhys
             
             % check consistency
             if currTrial < 1, return; end
-            if currTrial > obj.VideoFileNum,
-                DTP_ManageText([], sprintf('ElectroPhys : Event : Requested trial exceeds video files. Nothing is saved.'), 'E' ,0) ;
-                return
-            end;
+%             if currTrial > obj.EventFileNum,
+%                 DTP_ManageText([], sprintf('ElectroPhys : Event : Requested trial exceeds video files. Nothing is saved.'), 'E' ,0) ;
+%                 return
+%             end;
             if ~any(strcmp(strName,{'strEvent'})),
                 DTP_ManageText([], sprintf('ElectroPhys : Event : Input structure name must be strEvent.'), 'E' ,0) ;
                   error(('ElectroPhys : Event : Input structure name must be strEvent.'))                
@@ -542,9 +1165,6 @@ classdef TPA_DataManagerElectroPhys
                             
             DTP_ManageText([], sprintf('ElectroPhys : Event data from file %s has been saved',obj.EventFileNames{currTrial}), 'I' ,0)   ;             
         end
-        % ---------------------------------------------
-        
-  
         
         % ==========================================
         function obj = SelectAllData(obj,dirPath)
@@ -590,7 +1210,6 @@ classdef TPA_DataManagerElectroPhys
             %DTP_ManageText([], 'All the data has been selected successfully', 'I' ,0)   ;             
             
         end
-        % ---------------------------------------------
         
         % ==========================================
         function [obj, vidData, usrData] = LoadAllData(obj,currTrial)
@@ -611,9 +1230,7 @@ classdef TPA_DataManagerElectroPhys
             %DTP_ManageText([], 'All the data has been read successfully', 'I' ,0)   ;             
             
         end
-        % ---------------------------------------------
         
-
         % ==========================================
         function obj = RemoveRecord(obj,currTrial, removeWhat)
             % RemoveRecord - removes file reccord of currTrial from the list
@@ -634,18 +1251,10 @@ classdef TPA_DataManagerElectroPhys
             isRemoved = false;
 
             % video
-            if obj.VideoFrontFileNum > 0 && currTrial <= obj.VideoFrontFileNum && bitand(removeWhat,1)>0,
-                obj.VideoFrontFileNames(currTrial) = [];
-                obj.VideoFrontFileNum               = obj.VideoFrontFileNum - 1;
+            if obj.VideoFileNum > 0 && currTrial <= obj.VideoFileNum && bitand(removeWhat,1)>0,
+                obj.VideoFileNames(currTrial)  = [];
+                obj.VideoFileNum               = obj.VideoFileNum - 1;
                 isRemoved = true;
-            end
-            if obj.VideoSideFileNum > 0 && currTrial <= obj.VideoSideFileNum && bitand(removeWhat,2)>0,
-                obj.VideoSideFileNames(currTrial)  = [];
-                obj.VideoSideFileNum                = obj.VideoSideFileNum - 1;
-                isRemoved = true;
-            end
-            if obj.VideoFrontFileNum > 0 || obj.VideoSideFileNum > 0,
-                obj.VideoFileNum                    = obj.VideoFileNum - 1;
             end
             
             % analysis
@@ -663,34 +1272,42 @@ classdef TPA_DataManagerElectroPhys
 
             
         end
-        % ---------------------------------------------
-        
         
         % ==========================================
-        function [obj, CheckOK] = CheckData(obj)
+        function [obj, CheckOK] = CheckData(obj,ReadDir)
             % CheckData - checks image and user analysis data compatability
             % Input:
-            %     none
+            %     ReadDir  -  true - read directory content
             % Output:
             %     CheckOK - indicator of critical errors
-            
+              if nargin < 2, ReadDir = true; end;
+           
             CheckOK     = true;
-            imageNum    = obj.VideoFileNum;
             
             if obj.Trial < 1,
                 obj.Trial       = 1;
                 DTP_ManageText([], 'ElectroPhys : No trial is selected. Please select a trial or do new data load.', 'E' ,0)   ;
-                
             end
+            
+            % reread
+            if ReadDir,
+            obj             = SelectElectroPhysData(obj,obj.VideoDir);
+            end
+            trialNum        = obj.VideoDirNum;  % valid dir for all the data            
+            
             
             % video data with 1 camera compatability
             if obj.VideoFileNum < 1,
                 DTP_ManageText([], 'ElectroPhys : Image ElectroPhys data is not found. Trying to continue.', 'W' ,0)   ;
             else
-                imageNum = min(imageNum,obj.VideoDirNum);
+                trialNum = min(trialNum,obj.VideoDirNum);
                 DTP_ManageText([], sprintf('ElectroPhys : Using video data from directory %s.',obj.VideoDirNames{obj.Trial}), 'I' ,0)   ;                
             end
             
+            % reread dir structure
+            if ReadDir,
+            obj             = SelectAnalysisData(obj,obj.EventDir);            
+            end
             
             % user analysis data
             if obj.EventFileNum < 1,
@@ -703,22 +1320,55 @@ classdef TPA_DataManagerElectroPhys
                 %imageNum = min(imageNum,obj.EventFileNum);
             end        
             
-            if obj.VideoFileNum ~= obj.EventFileNum
-                DTP_ManageText([], 'Bahavior : Video and Analysis file number missmatch.', 'W' ,0)   ;
+            if obj.VideoDirNum ~= obj.EventFileNum
+                DTP_ManageText([], 'ElectroPhys : Video and Analysis file number missmatch.', 'W' ,0)   ;
             end
             
             
             % summary
-            DTP_ManageText([], sprintf('Check : Status %d : Found %d valid trials.',CheckOK,imageNum), 'I' ,0)   ;
+            DTP_ManageText([], sprintf('ElectroPhys : Status %d : Found %d valid trials.',CheckOK,trialNum), 'I' ,0)   ;
             
             
             % output
-            obj.ValidTrialNum           = imageNum;
+            obj.ValidTrialNum           = trialNum;
             obj.Trial                   = 1;
             
         end
-        % ---------------------------------------------
         
+        % ==========================================
+        function obj = RemoveEventData(obj)
+            % RemoveEventData - deletes files on the disk and also cleans the relevant structures
+            % Input:
+            %
+            % Output:
+            %     -
+            if isempty(obj.EventDir) || ~exist(obj.EventDir,'dir'),
+                 DTP_ManageText([], sprintf('ElectroPhys : Event directory is empty or does not exists.'), 'E' ,0);
+                 return;
+            end
+            
+            if obj.EventFileNum < 1,
+                 DTP_ManageText([], sprintf('ElectroPhys : No event data in directory %s.',obj.EventDir), 'W' ,0);
+                 return;
+            end
+            
+            for m = 1:obj.EventFileNum,
+                
+                fDirName                    = fullfile(obj.EventDir,obj.EventFileNames{m});
+                delete(fDirName);
+                
+            end
+            
+            % clean up
+            obj.EventFileNum                = 0;
+            obj.EventFileNames              = {};
+            
+        end
+        
+    end
+    
+    % Tests
+    methods
         
         
         % ==========================================
@@ -726,10 +1376,12 @@ classdef TPA_DataManagerElectroPhys
             % TestSelect - performs testing of the directory structure 
             % selection and check process
             
-            testVideoDir  = 'C:\LabUsers\Maria\5_6_13';
-            obj           = obj.SelectElectroPhysData(testVideoDir,'ch1');
+            testVideoDir  = 'C:\Users\Jackie.MEDICINE\Documents\liora\Data\Imaging\B18\20_12_15\20_12_15A';
+            obj           = obj.SelectElectroPhysData(testVideoDir);
             
-            testEventDir  = 'C:\UsersJ\Uri\Data\Analysis\Maria\5_6_13';
+            %return
+            
+            testEventDir  = 'C:\Users\Jackie.MEDICINE\Documents\liora\Data\Analysis\B18\20_12_15\20_12_15A';
             obj           = obj.SelectAnalysisData(testEventDir);
             
             % check
@@ -739,6 +1391,8 @@ classdef TPA_DataManagerElectroPhys
             else
                 DTP_ManageText([], sprintf('TestSelect 1 Fail.'), 'E' ,0)   ;
             end;
+            
+            return
             
             % remove entry
             currTrial    = 1;
@@ -755,21 +1409,21 @@ classdef TPA_DataManagerElectroPhys
             
          
         end
-        % ---------------------------------------------
+        
         % ==========================================
         function obj = TestElectroPhysLoad(obj)
             % TestLoad - given a directory loads full data
-            testVideoDir   = 'C:\LabUsers\Uri\Data\Janelia\Imaging\Maria\5_6_13';
-            tempTrial      = 3;
+            % 8 angles
+            testVideoDir   = 'C:\Users\Jackie.MEDICINE\Documents\liora\Data\Imaging\B18\20_12_15\20_12_15A';
+            % 1 angle
+            testVideoDir   = 'C:\Users\Jackie.MEDICINE\Documents\liora\Data\Imaging\B18\7_12_15\7_12_15A';
+            testTrial      = 3;
             figNum         = 100;
             
-            
-            % select data Load function
-            obj           = obj.SelectElectroPhysData(testVideoDir);
-            
-            
-            % load
-            [obj, recStr] = obj.LoadElectroPhysData(tempTrial);
+            % select again using Full Load function
+            obj             = SelectElectroPhysData(obj,testVideoDir);
+            obj             = LoadElectroPhysData(obj,testTrial);
+            obj             = ShowRecordData(obj, figNum);
 
             
             % final
@@ -779,28 +1433,67 @@ classdef TPA_DataManagerElectroPhys
             else
                 DTP_ManageText([], sprintf('TesttElectroPhysLoad Fail.'), 'E' ,0)   ;
             end;
-            
-            
-                
-            tt          = (1:recStr.recordNum)'*recStr.stimSampleTime;
-            figure(figNum),set(gcf,'Tag','AnalysisROI')
-            plot(tt, recStr.recordValue),
-            hold on;
-            stem(tt(recStr.frameStart),recStr.frameStart*0+3,'k')
-            hold off;
-            title('Electro Data')
-            %xlabel('Sample number'),
-            xlabel('Time [sec]'),
-            ylabel('Channel [Volt]')
-            chanName = recStr.chanName;
-            chanName{recStr.chanNum+1} = 'Frame Start';
-            legend(chanName)
-            
          
         end
-        % ---------------------------------------------
         
-     
+         % ==========================================
+        function obj = TestCluster(obj)
+            % TestCluster - given a directory loads full data
+            % and clusters it according to piezo
+            % 8 angles
+            testVideoDir   = 'C:\Users\Jackie.MEDICINE\Documents\liora\Data\Imaging\B18\20_12_15\20_12_15A';
+            % 1 angle
+            testVideoDir   = 'C:\Users\Jackie.MEDICINE\Documents\liora\Data\Imaging\B18\7_12_15\7_12_15A';
+            testTrial       = 1;
+            figNum          = 100;
+            
+            
+            % select again using Full Load function
+            obj             = SelectElectroPhysData(obj,testVideoDir);
+            obj             = LoadElectroPhysData(obj,testTrial);
+            %obj             = ShowRecordData(obj, figNum);
+            obj             = ClusterPiezoData(obj, figNum);
+         
+        end
+       
+         % ==========================================
+        function obj = TestConvert(obj)
+            % TestConvert - given a directory loads full data
+            % and clusters it according to piezo. Converts to events
+            % 8 angles
+            testVideoDir   = 'C:\Users\Jackie.MEDICINE\Documents\liora\Data\Imaging\B18\20_12_15\20_12_15A';
+            % 1 angle
+            testVideoDir   = 'C:\Users\Jackie.MEDICINE\Documents\liora\Data\Imaging\B18\7_12_15\7_12_15A';
+            testTrial       = 11;
+            figNum          = 100;
+            
+            
+            % select again using Full Load function
+            obj             = SelectElectroPhysData(obj,testVideoDir);
+            obj             = LoadElectroPhysData(obj,testTrial);
+            %obj             = ShowRecordData(obj, figNum);
+            [obj,pData]     = ClusterPiezoData(obj, figNum);
+            [obj,eData]     = ConvertToAnalysis(obj, pData);
+         
+        end
+        
+         % ==========================================
+        function obj = TestImport(obj)
+            % TestImport - given a directory loads full data
+            % and clusters it according to piezo. Converts to events and saves them
+            % 8 angles
+            testVideoDir   = 'C:\Users\Jackie.MEDICINE\Documents\liora\Data\Imaging\B18\20_12_15\20_12_15A';
+            % 1 angle
+            %testVideoDir   = 'C:\Users\Jackie.MEDICINE\Documents\liora\Data\Imaging\B18\7_12_15\7_12_15A';
+            figNum          = 100;
+            
+            
+            % select again using Full Load function
+            obj             = ImportEvents(obj,testVideoDir);
+         
+        end
+        
+        
         % ==========================================
         function obj = TestLoad(obj)
             % TestLoad - given a directory loads full data
@@ -827,8 +1520,6 @@ classdef TPA_DataManagerElectroPhys
             if obj.VideoFrontFileNum > 0,   figure(2),imshow(squeeze(vidData(:,:,frameNum))); end;
          
         end
-        % ---------------------------------------------
-       
        
         % ==========================================
         function obj = TestLoadDecimation(obj)
@@ -881,8 +1572,6 @@ classdef TPA_DataManagerElectroPhys
             if obj.VideoFileNum > 0,       figure(1),imshow(squeeze(imgData(:,:,1,frameNum))); end;
          
         end
-        % ---------------------------------------------
-        
         
          
         % ==========================================
@@ -920,7 +1609,6 @@ classdef TPA_DataManagerElectroPhys
             
          
         end
-        % ---------------------------------------------
         
         
     end% methods

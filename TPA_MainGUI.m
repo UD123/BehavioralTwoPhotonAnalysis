@@ -33,60 +33,17 @@ function TPA_MainGUI
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
-% 19.20 13.01.15 UD 	Trajectory in behavioral space cont
-% 19.17 30.12.14 UD 	Trajectory in behavioral space 
-% 19.16 22.12.14 UD 	Fixing bugs in Group and Adding cursors to MultiTrial Explorer.
-% 19.12 21.10.14 UD 	Merging with 1909. Fixes and bugs.
-% 19.06 21.09.14 UD 	Adding import to movie_comb.avi file from new JAABA_multi SW
-% 18.13 10.07.14 UD     Adding Group Analysis and improve auto detect .
-% 18.10 08.07.14 UD     Adding tool of multi experiment explorer.
-% 18.09 06.07.14 UD     Back to Janelia.
-% 18.03 25.04.14 UD     Rename and fixing bugs in Jaaba import.
-% 18.01 13.04.14 UD     One GUI for ElectroPhys
-% 17.08 05.04.14 UD     Recheck ROI problems by synthetic data gen
-% 17.06 28.03.14 UD     Jaaba import and auto detect two photon events
-% 17.05 22.03.14 UD     Working on auto detect of the cells. Fixing small bugs
-% 17.04 21.03.14 UD     Recheck registration
-% 17.03 12.03.14 UD     Batch registration fix
-% 17.02 10.03.14 UD     All cells are extracted in batch and processed even they do not appear.
-% 17.01 06.03.14 UD     Explorer improve. Export to Tiff registration.
-% 17.00 04.03.14 UD     ROI names management.
-% 16.26 04.03.14 UD     Adding features : x - line and selection of ROI names.
-% 16.23 26.02.14 UD     Counters....
-% 16.22 26.02.14 UD     Version backup - previous in tests.
-% 16.21 26.02.14 UD     Counter in the session file and session is moved to experiment.
-% 16.20 26.02.14 UD     Multi Trial improving. Bug in save.
-% 16.19 24.02.14 UD     Multi Trial.
-% 16.13 23.02.14 UD     Adding ROI analysis.
-% 16.11 22.02.14 UD     testing.
-% 16.10 21.02.14 UD     communication is only on position.
-% 16.07 20.02.14 UD     renaming.
-% 16.06 19.02.14 UD     ROI management.
-% 16.05 18.02.14 UD     Sync .Jackies bugs.
-% 16.03 16.02.14 UD     Adding Data Sync options. Changing Data to global.
-% 16.02 15.02.14 UD     Restructuring. Front and Side are the same. Make
-%                       global image data
-% 16.00 13.02.14 UD     Janelia Data integration
-% 15.01 06.02.14 UD     Email comments
-% 15.00 10.01.14 UD     Janelia support
-% 13.01 10.11.13 UD     working on ROI. Adding Janelia support
-% 13.00 03.11.13 UD     ROI edit
-% 12.01 14.09.13 UD     working on Z stack
-% 12.00 03.09.13 UD     working on Z stack
-% 11.09 20.08.13 UD     improvement and bug fixes. Adding cursor management
-% 11.06 06.08.13 UD     two image channel support
-% 11.05 30.07.13 UD     update for save
-% 11.02 15.07.13 UD     Improving.
-% 11.00 08.07.13 UD     Working to implement differnt options.
-% 10.07 25.06.13 UD     Extracting data to Igor.
+% See README.txt
 %-----------------------------
 % remove any global var if any
-%clear all;
+clear globals;
+clear variables;
 
 % version
-currVers    = '19.24';
+currVers    = '29.04';
 
 % connect
+%rmpath(genpath('.')); % remove old connections
 addpath(genpath('.'));
 
 %%%
@@ -97,13 +54,15 @@ S            = [];
 %%%
 % Control params
 %%%
-Par           = TPA_ParInit;
+global Par;
+Par           = TPA_ParInit(currVers);
 
 %%%
 % Data struct shared by all
 %%%
 global SData;
-SData        = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',[],'strManager',struct('roiCount',0,'eventCount',0)); % strManager will manage counters
+%SData        = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',{},'strManager',struct('roiCount',0,'eventCount',0)); % strManager will manage counters
+SData        = TPA_DataManagerMemory();
 
 %%%
 % GUI handles visible to all
@@ -114,18 +73,28 @@ SGui         = struct('hMain',[],'hChildList',[],'usrInfo',[]);
 
 
 % load default user settings
-SSave       = [];  % can not load without init definition
+SSave        = struct('ExpDir',pwd,'DMT',[],'DMB',[],'strManager',[]); 
+dmExperiment = TPA_ManageExperiment();
 
 %  managers
+dmSession   = TPA_ManageSession();
 mcObj       = TPA_MotionCorrectionManager();
 dmROIAD     = TPA_ManageRoiAutodetect();
 dmEVAD      = TPA_ManageEventAutodetect(Par);
-dmFileDir   = TPA_DataManagerFileDir();
-gdm         = TPA_MultiTrialGroupDetect();
+%dmFileDir   = TPA_DataManagerFileDir();
+dmMTGD      = TPA_MultiTrialGroupDetect();
 objTrack    = TPA_OpticalFlowTracking();
+%dmED        = TPA_TwoPhotonEventDetect();
+dmMultExp   = TPA_MultiExperimentLearning();
+dmMTTP      = TPA_MultiTrialTwoPhotonManager();
+dmRoiGal    = TPA_ManageRoiAutodetectGal();
+dmCDNN      = TPA_MultiTrialBehaviorClassifier();
 
 
+trajLabeler = [];
 
+% helper for view selection
+activeView  = 'side';
 
 %%%
 % Start
@@ -144,93 +113,27 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
 %%% Start nested functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
-
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fManageSession (nested in main)
-% * *
 % * * save,load and clear current session data
-% * *
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fManageSession(hObject, eventdata, selType)
-                
-        userSessionFileName    = fullfile(Par.SetupDir,Par.SetupFileName);
         
         switch selType,
             
-            case 1, % load last session
-                if exist(userSessionFileName, 'file'),
-                    try
-                        SSave = load(userSessionFileName);
-                        %Par   = SSave.ExpDir;
-                    catch ex
-                        errordlg(ex.getReport('basic'),'File Type Error','modal');
-                    end
-                end
-                % clear all
-                %SData            = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',[]);
-                %DTP_ManageText([], sprintf('Session : Setting path to data %. Clearing the internal memory.',SSave.ExpDir), 'I' ,0)   ;
+            case 1 % load last session
+                dmSession           = LoadLastSession(dmSession);               
                 
-                
-            case 2, % load session user mode
-                
-                [csFilenames, sPath] = uigetfile(...
-                    {   '*.mat', 'mat Files'; '*.*', 'All Files'}, ...
-                    'OpenLocation'  , Par.SetupDir, ...
-                    'Multiselect'   , 'off');
-                
-                if isnumeric(sPath), return, end;   % Dialog aborted
-                
-                % if single file selected
-                if iscell(csFilenames), csFilenames = csFilenames{1}; end;
-                userSessionFileName    = fullfile(sPath,csFilenames);
-                try
-                    SSave = load(userSessionFileName); % load all info
-                    catch ex
-                        errordlg(ex.getReport('basic'),'File Type Error','modal');
-                end
-                % remember the name of the session
-                Par.SetupFileName       = csFilenames;
-                Par.ExpDir              = sPath;
-                
-            case 3, % save the session
-                 %DTP_ManageText([], sprintf('Session : Saving data setup. Analysis data is not saved. '), 'I' ,0)   ;
-               
-                % Save the settings
-                SSave.ExpDir        = Par.DMT.RoiDir;
-                try %#ok<TRYNC>
-                    save(userSessionFileName,'-struct', 'SSave');
-                end
-                
-            case 4, % save session as...
-                
-               [filename, pathname] = uiputfile('*.mat', 'Save Session file',Par.SetupFileName);
-                if isequal(filename,0) || isequal(pathname,0),  return;    end
-                
-                userSessionFileName = fullfile(pathname, filename);
-                % Save the settings
-                SSave.ExpDir        = Par.DMT.VideoDir;
-                try %#ok<TRYNC>
-                    save(userSessionFileName,'-struct', 'SSave');
-                end
-                
-            case 5, % clear/new session
-                
-%                 buttonName = questdlg('All the numbering of ROis and Events will be lost', 'Warning');
-%                 if ~strcmp(buttonName,'Yes'), return; end;
-%                   
-%                 SSave.ExpDir        = Par.DMT.VideoDir;
-%               
-%                 DTP_ManageText([], sprintf('Session : Clearing all the video and analysis data.'), 'W' ,0)   ;
-%                % Clear all the previous data
-%                 SData           = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',[]);
-%                 Par             = TPA_ParInit;
-%                 
-%                 try %#ok<TRYNC>
-%                     save(userSessionFileName,'-struct', 'SSave');
-%                 end
-                
+            case 2 % load session user mode
+                dmSession           = LoadUserSession(dmSession);
+
+            case 3 % save the session
+                 dmSession          = SaveLastSession(dmSession);
+
+            case 4 % save session as...
+                dmSession           = SaveUserSession(dmSession);
+
+            case 5 % clear/new session
+                dmSession           = TPA_ManageSession();
                 % close figures
                 fCloseFigures(0,0)    ;
                 
@@ -242,499 +145,123 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fManageSession
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fManageJaneliaExperiment (nested in main)
-% * *
-% * * sellects and check experiment data from Janelia
-% * *
+% * * sellects and check experiment menu
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-    function fManageJaneliaExperiment(hObject, eventdata, selType)
+    function fManageExperiment(hObject, eventdata, selType)
         
+        % save session
+        %dmSession          = SaveLastSession(dmSession);
+        %dmExperiment       = SaveLastExperiment(dmExperiment);
         
-        %%%%%%%%%%%%%%%%%%%%%%
-        % Which data
-        %%%%%%%%%%%%%%%%%%%%%%
-        
-        %FigNum              = Par.FigNum; % 0-no show 1-shows the image,2-line scans
         switch selType,
             
-          case 1, % new experiment - file style
-                fManageJaneliaExperiment(0,0,3);        
-              
-                % set up fiile
-                buttonName = questdlg('If you select previous experiment folder : all the numbering of ROis and Events will be lost', 'Warning');
-                if ~strcmp(buttonName,'Yes'), return; end;
+            case 1, % select experiment type
                 
-                 % determine the path - do not certain directory structure
-                Par                 = TPA_ParInit;         
-                SData               = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',[],'strManager',struct('roiCount',0,'eventCount',0)); % strManager will manage counters
+                dmExperiment = SelectExperimentType(dmExperiment);
+                
+            case 2, % select directory and load experiment using dir structure
                 
                 % recall last directory
-                fManageSession(0, 0, 1);
-                dirName             = SSave.ExpDir;
-                 
-             
-                % analysis directory
-                dirName             = uigetdir(dirName,'Select Analysis directory that belongs to Experiment (i.e. ..Analysis\m76\1-10-14)');
+                [dmSession,dirName]       = SelectDirectory(dmSession);
                 if isnumeric(dirName), return; end;  % cancel button
-
-                Par.DMT             = Par.DMT.SelectAnalysisData(dirName);
-                Par.DMB             = Par.DMB.SelectAnalysisData(dirName);
-
-                % two photon imaging directory
-                dirName             = uigetdir(dirName,'Select Two Photon image data directory that belongs to Experiment (i.e. ..Imaging\m76\1-10-14)');
-                if isnumeric(dirName), return; end;  % cancel button
-                Par.DMT             = Par.DMT.SelectTwoPhotonData(dirName);
-          
-                % behavior directory
-                dirName             = uigetdir(dirName,'Select Beahavior image data directory that belongs to Experiment (i.e. ..Videos\m76\1-10-14)');
-                if isnumeric(dirName), return; end;  % cancel button
-                Par.DMB             = Par.DMB.SelectBehaviorData(dirName,'all');
                 
-                % check
+                % clear all the data
+                SData               = Init(SData);
+                dmExperiment        = InitFromDirectory(dmExperiment, dirName);
+                
+                % check : reread dir structure
                 Par.DMT             = Par.DMT.CheckData();
                 Par.DMB             = Par.DMB.CheckData();
                 
-                % create new Excel file
-                dmFileDir           = dmFileDir.Init(Par);
-                dmFileDir           = dmFileDir.SaveExcelFile(Par);
-                   
-                % remember session
-                fManageJaneliaExperiment(0,0,3);   
                 
-                % save session
-                %fManageSession(0, 0, 3);
-                 
-            case 2, % load experiment - select directory
-                % save data before
-                fManageJaneliaExperiment(0,0,3);                        
                 
-                dirName             = uigetdir(SSave.ExpDir,'Select Analysis directory that belongs to Experiment');
+            case 3, % select directory and data management file to load experiment
+                
+                % recall last directory
+                dmSession           = LoadLastSession(dmSession);
+                
+                % clear all the data
+                SData               = Init(SData);
+                dmExperiment        = InitFromManagementFile(dmExperiment, dmSession.ExpDir);
+                
+                
+            case 4, % setup new directories
+                
+                % recall last directory
+                dmSession           = LoadLastSession(dmSession);
+                
+                % new data, new dirs, create new CSV file
+                SData               = Init(SData);
+                dmExperiment        = SpecifyDirectories(dmExperiment);
+                
+            case 5, % Refresh Excel file by selecting directories
+                
+                % select dir
+                [dmSession,dirName]       = SelectDirectory(dmSession);
                 if isnumeric(dirName), return; end;  % cancel button
-                
-                SData               = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',[],'strManager',struct('roiCount',0,'eventCount',0));                
-                expFileName         = fullfile(dirName,Par.ExpFileName);
-                try 
-                    SSave           = load(expFileName);
-                    SData.strManager= SSave.strManager; % counters
-                 catch
-                    DTP_ManageText([], sprintf('Experiment : Can not load file %s',expFileName), 'E' ,0)   ;  
-                    return
-                end
-                SSave.ExpDir        = dirName;
-                
-%                 % check - see if directory structure is updated
-%                 Par.DMT             = Par.DMT.SelectAllData(dirName);
-%                 Par.DMB             = Par.DMB.SelectAllData(dirName,'all');
-%                 
-%                 
-%                 % check
-%                 [Par.DMT,isOK]      = Par.DMT.CheckData();
-%                 [Par.DMB,isOK]      = Par.DMB.CheckData();
-%                 
-                
-                % load from Excel
-                dmFileDir           = dmFileDir.Init(Par) ;
-                dmFileDir           = dmFileDir.LoadExcelFile(dirName) ;
-                
-                % init data base
-                Par                 = dmFileDir.ParInit(Par);     
-                
-%                 % check
-%                 [Par.DMT,isOK]      = Par.DMT.CheckData();
-%                 if ~isOK,                     
-%                     DTP_ManageText([], sprintf('Experiment : Excel file %s could contain non valid info for two photon data location',expFileName), 'E' ,0)   ;
-%                 end
-% 
-%                 [Par.DMB,isOK]      = Par.DMB.CheckData();
-%                 if ~isOK,                     
-%                     DTP_ManageText([], sprintf('Experiment : Excel file %s could contain non valid info for behavioral data location',expFileName), 'E' ,0)   ;
-%                 end
-                
-                % save session
-                fManageSession(0, 0, 3);
-                
-                
-         case 3, % save experiment settings
-             
-                % if at least one load has been done
-                if Par.DMT.RoiFileNum < 1 , return; end; % No load - nothing to save
-                
-                % Save the settings
-                SSave.ExpDir        = Par.DMT.RoiDir;
-                SSave.strManager    = SData.strManager;
-                % SSave.StrEventClass = []; % use old classifier if assigned
-
-                expFileName         = fullfile(SSave.ExpDir,Par.ExpFileName);                
-                try 
-                    save(expFileName,'-struct', 'SSave');
-                    DTP_ManageText([], sprintf('Experiment : Saving current configuration. '), 'I' ,0)   ;
-                catch
-                    DTP_ManageText([], sprintf('Experiment : Can not save file %s',expFileName), 'E' ,0)   ;             
-                end
-   
-                
-                % save session
-                fManageSession(0, 0, 3);
-                
-          
-            case 4, % Refresh Excel file
-                
-                %fManageJaneliaExperiment(0,0,2);   
-                
-                dirName             = uigetdir(SSave.ExpDir,'Select Analysis directory that belongs to Experiment');
-                if isnumeric(dirName), return; end;  % cancel button
-                
-                
-                % check directory
-                %dirName             = SSave.ExpDir;
                 
                 % check
                 Par.DMT             = Par.DMT.SelectAllData(dirName);
                 Par.DMB             = Par.DMB.SelectAllData(dirName,'all');
-
+                
                 
                 % check
                 Par.DMT             = Par.DMT.CheckData();
                 Par.DMB             = Par.DMB.CheckData();
-                
                 
                 % save to excel
-                fManageJaneliaExperiment(0,0,7);                   
+                Par.DMF            = Par.DMF.SaveTableFile(Par);
+                
+            case 6, % save experiment to excel
+                
+                Par.DMF           = Par.DMF.SaveTableFile(Par);
                 
                 
-          
-          case 5, % check data sync - open GUI
+            case 7, % preview current Excel/Csv file
+                
+                Par.DMF             = Preview(Par.DMF, dmExperiment.ExpDir);
+                
+            case 8, % load experiment
+                
+                % new data, new dirs, create new CSV file
+                dmExperiment        = LoadLastExperiment(dmExperiment,dmSession.ExpDir);
+
+            case 9, % save experiment
+                
+                % new data, new dirs, create new CSV file
+                dmExperiment        = SaveLastExperiment(dmExperiment, dmSession.ExpDir);
+                
+            case 15, % check data sync - open GUI
+                
                 
                 % start GUI
                 Par                 = TPA_DataAlignmentCheck(Par);
                 
-                % check
-                %Par.DMT             = Par.DMT.CheckData();
-                %Par.DMB             = Par.DMB.CheckData();
-                
-         
-            case 6, % preview current Excel file
-                
-                % start GUI
-                fileExcelName      = fullfile(dmFileDir.ExpDir,dmFileDir.FileName);
-                try 
-                    winopen(fileExcelName);
-                    DTP_ManageText([], sprintf('Experiment : New configuration is done. '), 'I' ,0)   ;                    
-                 catch
-                    DTP_ManageText([], sprintf('Experiment : Can not open file %s',fileExcelName), 'E' ,0)   ;             
-                end
-                
-         case 7, % save experiment to excel
-             
-                % if at least one load has been done
-%                 if Par.DMT.VideoFileNum < 1,
-%                     DTP_ManageText([], sprintf('Experiment : First select or load some experiment. '), 'E' ,0)   ;
-%                     return; 
-%                 end; % No load - nothing to save
-                %dirName             = Par.DMT.RoiDir;
-                
-                % create new Excel file
-                dmFileDir           = dmFileDir.SaveExcelFile(Par);
-                
-                % Save the settings
-                fManageJaneliaExperiment(0,0,3);   
-                
-                
-            case 8, %  experiment - old style
-                fManageJaneliaExperiment(0,0,3);        
-              
-%                 % set up fiile
-%                 buttonName = questdlg('If you select previous experiment folder : all the numbering of ROis and Events will be lost', 'Warning');
-%                 if ~strcmp(buttonName,'Yes'), return; end;
-              
-                dirName             = uigetdir(SSave.ExpDir,'Select any directory that belongs to Experiment (i.e. ..Analysis\m76\1-10-14)');
-                if isnumeric(dirName), return; end;  % cancel button
-                
-                % determine the path - assume certain directory structure
-                Par                = TPA_ParInit;         
-                
-                SData               = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',[],'strManager',struct('roiCount',0,'eventCount',0)); % strManager will manage counters
-                Par.DMT             = Par.DMT.SelectAllData(dirName);
-                Par.DMB             = Par.DMB.SelectAllData(dirName);
-                % check
-                Par.DMT             = Par.DMT.CheckData();
-                Par.DMB             = Par.DMB.CheckData();
-                
-                % save settings
-                fManageJaneliaExperiment(0,0,3);   
-            
-                
-          
-%                 
-%             case 11, % new SW version  - load movie_comb.avi from directories 
-%                 % save
-%                 fManageJaneliaExperiment(0,0,3);  
-%                 
-%                 %dirName             = uigetdir(SSave.ExpDir,'Jaaba Data Directory');
-%                 dirName             = uigetdir(SSave.ExpDir,'Select any directory that belongs to Experiment (i.e. ..Analysis\m76\1-10-14)');
-%                 if isnumeric(dirName), return; end;  % cancel button  
-%                 
-%                 % determine the path - assume certain directory structure
-%                 Par                = TPA_ParInit;         
-%   
-%                 % init Behave and Two Photon
-%                 SData               = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',[],'strManager',struct('roiCount',0,'eventCount',0)); % strManager will manage counters
-%                 
-%                 % import JAABA - event from scores and movies from movie_comb.avi
-%                 SSave.ExpDir        = dirName;  % path this info for Jaaba
-%                 fImportResults(0, 0, 1);
-%                 
-%                 
-%                 Par.DMT             = Par.DMT.SelectAllData(dirName);
-%                 Par.DMB             = Par.DMB.SelectAllData(dirName,'comb');
-%                 % check
-%                 Par.DMT             = Par.DMT.CheckData();
-%                 Par.DMB             = Par.DMB.CheckData();
-%                 
-%                  
-%                 expFileName         = fullfile(Par.DMB.EventDir,Par.ExpFileName);                
-%                 SSave.ExpDir        = dirName;
-%                 SSave.StrEventClass = []; % new classifier
-%                 try 
-%                     save(expFileName,'-struct', 'SSave');
-%                     DTP_ManageText([], sprintf('Experiment : New configuration is done. '), 'I' ,0)   ;                    
-%                  catch
-%                     DTP_ManageText([], sprintf('Experiment : Can not save file %s',expFileName), 'E' ,0)   ;             
-%                 end
-%                 
                 
             otherwise
                 error('Bad  selection %d',selType)
         end
         
         % save path
-        %fManageSession(0,0,3);
+        %dmSession          = SaveLastSession(dmSession);
         
         % Update figure components
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fManageJaneliaExperiment
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fManageElectroPhysExperiment (nested in main)
-% * *
-% * * sellects and check experiment data from Electro Physiology
-% * *
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-    function fManageElectroPhysExperiment(hObject, eventdata, selType)
-        
-        
-        %%%%%%%%%%%%%%%%%%%%%%
-        % Which data
-        %%%%%%%%%%%%%%%%%%%%%%
-        
-        %FigNum              = Par.FigNum; % 0-no show 1-shows the image,2-line scans
-        switch selType,
-            
-          case 1, % new experiment
-                fManageElectroPhysExperiment(0,0,3);        
-              
-                % set up fiile
-                buttonName = questdlg('If you select previous experiment folder : all the numbering of ROis and Events will be lost', 'Warning');
-                if ~strcmp(buttonName,'Yes'), return; end;
-              
-                dirName             = uigetdir(SSave.ExpDir,'Select any directory that belongs to Experiment (i.e. ..Analysis\m76\1-10-14)');
-                if isnumeric(dirName), return; end;  % cancel button
-                
-                % determine the path - assume certain directory structure
-                Par                = TPA_ParInit;         
-                
-                SData               = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',[],'strManager',struct('roiCount',0,'eventCount',0)); % strManager will manage counters
-                Par.DMT             = Par.DMT.SelectAllData(dirName);
-                Par.DME             = Par.DME.SelectAllData(dirName);
-                % check
-                Par.DMT             = Par.DMT.CheckData();
-                Par.DME             = Par.DME.CheckData();
-                
-                   
-                expFileName         = fullfile(Par.DMT.RoiDir,Par.ExpFileName);
-                SSave.strManager    = SData.strManager;
-                SSave.ExpDir        = dirName;
-                try 
-                    save(expFileName,'-struct', 'SSave');
-                 catch
-                    DTP_ManageText([], sprintf('Experiment : Can not save file %s',expFileName), 'E' ,0)   ;             
-                end
-                 
-             
-            
-            case 2, % load experiment - select directory
-                % save data before
-                fManageElectroPhysExperiment(0,0,3);                        
-                
-                dirName             = uigetdir(SSave.ExpDir,'Select any directory that belongs to Experiment');
-                if isnumeric(dirName), return; end;  % cancel button
-                
-                SData               = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',[],'strManager',struct('roiCount',0,'eventCount',0));                
-                expFileName         = fullfile(dirName,Par.ExpFileName);
-                try 
-                    SSave           = load(expFileName);
-                    SData.strManager= SSave.strManager; % counters
-                 catch
-                    DTP_ManageText([], sprintf('Experiment : Can not load file %s',expFileName), 'E' ,0)   ;             
-                end
-                
-                SSave.ExpDir        = dirName;
-              
-                % determine the path - assume certain directory structure - find new files
-                Par.DMT            = Par.DMT.SelectAllData(dirName);
-                Par.DME            = Par.DME.SelectAllData(dirName);
-                
-                % check
-                Par.DMT             = Par.DMT.CheckData();
-                Par.DME             = Par.DME.CheckData();
-                
-         case 3, % save experiment
-             
-                % if at least one load has been done
-                if Par.DMT.VideoFileNum < 1, return; end; % No load - nothing to save
-                
-                % Save the settings
-                SSave.ExpDir        = Par.DMT.RoiDir;
-                SSave.strManager    = SData.strManager;
-                expFileName         = fullfile(SSave.ExpDir,Par.ExpFileName);                
-                try 
-                    save(expFileName,'-struct', 'SSave');
-                    DTP_ManageText([], sprintf('Experiment : Saving current configuration. '), 'I' ,0)   ;
-                 catch
-                    DTP_ManageText([], sprintf('Experiment : Can not save file %s',expFileName), 'E' ,0)   ;             
-                end
-                
-               
-          
-          case 4, % check data sync - open GUI
-                
-                % start GUI
-                Par                 = TPA_DataAlignmentCheck(Par);
-                
-                % check
-                Par.DMT             = Par.DMT.CheckData();
-                Par.DME             = Par.DME.CheckData();
-                
-                %uiwait(hFig)
-                
-            otherwise
-                error('Bad  selection %d',selType)
-        end
-        
-        % save path
-        %fManageSession(0,0,3);
-        
-        % Update figure components
-        fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
-        
-    end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fManageElectroPhysExperiment
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
-
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fSelectTrial (nested in main)
-% * *
-% * * selects which trial to load
-% * *
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-    function [dmObj,isOK] = fSelectTrial(dmObj)
-        
-        % dmObj - data managing object
-        if nargin < 1, error('Must input Data Managing Object'); end
-        
-        isOK                = false; % support next level function
-        options.Resize      ='on';
-        options.WindowStyle ='modal';
-        options.Interpreter ='none';
-        prompt              = {sprintf('Enter trial number between %d:%d',1,dmObj.ValidTrialNum)};
-        name                ='Choose trial to load';
-        numlines            = 1;
-        defaultanswer       ={num2str(dmObj.Trial)};
-        
-        answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
-        if isempty(answer), return; end;
-        trialInd           = str2double(answer{1});
-        
-        % check validity
-        [dmObj,isOK]        = dmObj.SetTrial(trialInd);
-        
-        if~isequal(Par.DMT.Trial,Par.DMB.Trial), 
-            DTP_ManageText([], 'TwoPhoton and Behavior datasets have different trials numbers', 'W' ,0)   ;             
-        end
-        
-    end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fSelectTrial
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fSetDataParameters (nested in main)
-% * *
-% * * determines X,Y,Z and T resolution and decimation parameters
-% * *
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-    function [dmObj,isOK] = fSetDataParameters(dmObj)
-        
-        % dmObj - data managing object
-        if nargin < 1, error('Must input Data Managing Object'); end
-        
-        % config small GUI
-        isOK                  = false; % support next level function
-        options.Resize        ='on';
-        options.WindowStyle     ='modal';
-        options.Interpreter     ='none';
-        prompt                  = {'Data Resolution [X [um/pix] Y [um/pix] Z [um/frame] T [frame/sec]',...
-                                'Data Decimation Factor [X [(int>0)] Y [(int>0)] Z [(int>0)] T [(int>0)]',...            
-                                'Data Offset (N.A.)    [X [um] Y [um] Z [um] T [frame] ',...            
-                                'Slice Tiff File on Multiple Z Stacks [nZ - number of Z] ',...            
-                                };
-        name                ='Config Data Parameters';
-        numlines            = 1;
-        defaultanswer       ={num2str(dmObj.Resolution),num2str(dmObj.DecimationFactor),num2str(dmObj.Offset),num2str(dmObj.SliceNum)};
-        answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
-        if isempty(answer), return; end;
-        
-        
-        % try to configure
-        res                 = str2num(answer{1});
-        [dmObj,isOK1]       = dmObj.SetResolution(res) ;       
-        dec                 = str2num(answer{2});
-        [dmObj,isOK2]       = dmObj.SetDecimation(dec) ;       
-        isOK                = isOK1 && isOK2;
-        slc                 = str2num(answer{4});
-        [dmObj,isOK2]       = dmObj.SetSliceNum(slc) ;       
-        isOK                = isOK1 && isOK2;
-        
-        
-    end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fSetDataParameters
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fManageBehavior (nested in main)
-% * *
 % * * shows and explore behavior image data along with events
-% * *
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fManageBehavior(hObject, eventdata, selType)
+        
+        % Intercept Stimulus
+        if isa(Par.DMB,'TPA_DataManagerStimulus'),
+            fManageStimulus(hObject, eventdata, selType);
+            return
+        end
         
         %%%%%%%%%%%%%%%%%%%%%%
         % What
@@ -743,14 +270,18 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
             case 1, % select and load predefined trial
                 
                 % select GUI
-                [Par.DMB,isOK] = fSelectTrial(Par.DMB);            %vis4d(uint8(SData.imTwoPhoton));
+                [Par.DMB,isOK] = GuiSelectTrial(Par.DMB);            %vis4d(uint8(SData.imTwoPhoton));
                 if ~isOK,
                     DTP_ManageText([], 'Behavior : Trial Selection problems', 'E' ,0)   ;                  
                 end
+                if ~isequal(Par.DMT.Trial,Par.DMB.Trial), 
+                    DTP_ManageText([], 'TwoPhoton and Behavior datasets have different trials numbers', 'W' ,0)   ;             
+                end
+                
                 
             case 11,
                 % determine data params
-                [Par.DMB,isOK] = fSetDataParameters(Par.DMB);
+                [Par.DMB,isOK] = GuiSetDataParameters(Par.DMB);
                 if ~isOK,
                     DTP_ManageText([], 'Behavior : configuration parameters are not updated', 'W' ,0)   ;                  
                 end
@@ -774,6 +305,8 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                         SData.strEvent          = strEvent;
                 elseif length(strEvent) < 1 && length(SData.strEvent) > 0,
                         SData.strEvent          = {}; % use none
+                        %SData.strEvent = TPA_EventListManager;
+
                 end
 
                 
@@ -794,29 +327,29 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 [Par] = TPA_BehaviorEditorYT(Par);
  
                 
-           case 5,
-                % edit YT
-                if ( Par.DMB.VideoFrontFileNum < 1 && Par.DMB.VideoSideFileNum < 1 ) || isempty(SData.imBehaive),
-                    warndlg('Need to load behavior data first.');
-                    return
-                end;
-                if length(SData.strEvent) < 1,
-                    warndlg('Need to mark behavior data first.');
-                    return
-                end;
-                    
-                % start save
-                Par.DMB     = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'strEvent',SData.strEvent);
+%            case 5,
+%                 % edit YT
+%                 if ( Par.DMB.VideoFrontFileNum < 1 && Par.DMB.VideoSideFileNum < 1 ) || isempty(SData.imBehaive),
+%                     warndlg('Need to load behavior data first.');
+%                     return
+%                 end;
+%                 if length(SData.strEvent) < 1,
+%                     warndlg('Need to mark behavior data first.');
+%                     return
+%                 end;
+%                     
+%                 % start save
+%                 Par.DMB     = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'strEvent',SData.strEvent);
 
                 
-           case 6,
+           case 6
                 % Next Trial Full load
                 
                 % close previous
                 hFigLU = findobj('Name','4D : Behavior Time Editor');    
-                if ~isempty(hFigLU), close(hFigLU); end;
+                if ~isempty(hFigLU), close(hFigLU); end
                 hFigRU = findobj('Name','4D : Behavior Image Editor');    
-                if ~isempty(hFigRU), close(hFigRU); end;
+                if ~isempty(hFigRU), close(hFigRU); end
                 
                 % set new trial
                 trialInd            = Par.DMB.Trial + 1;
@@ -832,25 +365,162 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 % Arrange
                 fArrangeFigures();
                 
-          case 21,
+          case 21
                 % Behavioral data compression
                 if Par.DMB.VideoFrontFileNum < 1 && Par.DMB.VideoSideFileNum < 1 ,
                     warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
                     return
-                end;
+                end
                 buttonName = questdlg('Current trial Behaivioral Video data will be changed.', 'Warning');
                 if ~strcmp(buttonName,'Yes'), return; end;
                 
                 Par.DMB           = Par.DMB.CompressBehaviorData(Par.DMB.Trial,'all');
                 
-          case 22,
+          case 22
                 % Behavioral data check
                 if Par.DMB.VideoFrontFileNum < 1 && Par.DMB.VideoSideFileNum < 1 ,
                     warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
                     return
-                end;
+                end
                 
                 Par.DMB           = Par.DMB.CheckImageData(SData.imBehaive);
+                
+          case 31
+              
+                % Behavioral data check
+                if Par.DMB.VideoFrontFileNum < 1 && Par.DMB.VideoSideFileNum < 1 ,
+                    warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
+                    return
+                end
+                
+                % try to load the analysis data
+                [Par.DMT, SData.strROI]                 = LoadAnalysisData(Par.DMT,Par.DMB.Trial,'strROI');
+                if Par.DMB.Trial ~= Par.DMT.Trial,
+                    warndlg('Behavior and Two Photon data must have the same trial numbers. Please select the same Trial and load the data after that.');
+                    return
+                end;
+                
+                mngrOverlay     = TPA_BehaviorTwoPhotonOverlay();
+                mngrOverlay     = ShowInit(mngrOverlay, Par.DMB.Trial);
+                %mngrOverlay     = Overlay(mngrOverlay);
+                mngrOverlay     = OverlayColor(mngrOverlay);
+                mngrOverlay     = ShowFinal(mngrOverlay);
+                
+          case 41,
+              
+                % Behavioral data check
+                if Par.DMB.VideoFrontFileNum < 1 && Par.DMB.VideoSideFileNum < 1 
+                    warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
+                    return
+                end
+                if isempty(SData.imBehaive)
+                    warndlg('Please load the Behavioral Data');
+                    return
+                end
+                if isempty(SData.strEvent)
+                    [Par.DMB, SData.strEvent]    = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
+                end
+                if length(SData.strEvent)<1
+                    warndlg('Please create ROI for Behavioral Data');
+                    return
+                end
+                
+                mngrAnalys              = TPA_BehaviorAnalysis();
+                mngrAnalys              = ExternalAnalysis(mngrAnalys,SData.imBehaive,SData.strEvent);
+                [mngrAnalys,strEvent]   = ExportEvents(mngrAnalys);
+                                
+                
+                % save
+                SData.strEvent          = strEvent;
+                Par.DMB                 = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'strEvent',SData.strEvent);
+
+                
+            otherwise
+                errordlg('Unsupported Type')
+        end;
+        
+        % Update figure components
+        fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
+        
+    end
+
+% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+% * * shows and explore stimulus data from Prarie system
+% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+    function fManageStimulus(hObject, eventdata, selType)
+        
+        % What
+        switch selType,
+            case 1, % select and load predefined trial
+                
+                % select GUI
+                [Par.DMB,isOK] = GuiSelectTrial(Par.DMB);            %vis4d(uint8(SData.imTwoPhoton));
+                if ~isOK,
+                    DTP_ManageText([], 'Stimulus : Trial Selection problems', 'E' ,0)   ;                  
+                end
+                if ~isequal(Par.DMT.Trial,Par.DMB.Trial), 
+                    DTP_ManageText([], 'TwoPhoton and Behavior datasets have different trials numbers', 'W' ,0)   ;             
+                end
+                
+                
+            case 11, % determine data params
+                [Par.DMB,isOK] = GuiSetDataParameters(Par.DMB);
+                if ~isOK,
+                    DTP_ManageText([], 'Stimulus : configuration parameters are not updated', 'W' ,0)   ;                  
+                end
+                
+            case 2,  % Behavior
+                if Par.DMB.VideoFileNum < 1 ,
+                    warndlg('Stimulus is not selected or there are problems with directory. Please select Trial and load the data after that.');
+                    return
+                end;
+                Par.DMB                         = Par.DMB.LoadStimulusData(Par.DMB.Trial);
+                %DTP_ManageText([], 'Behavior : Two file load Completed.', 'I' ,0)   ;
+                [Par.DMB, strEvent]             = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
+                % this code helps with sequential processing of the ROIs: use old one in the new image
+%                 if length(strEvent) > 0 && length(SData.strEvent) > 0,
+%                     buttonName                  = questdlg('Would you like to use Event data from previous trial?');  
+%                     if ~strcmp(buttonName,'Yes'),  
+%                         SData.strEvent          = strEvent;
+%                     end;
+                if length(strEvent) > 0, % && length(SData.strEvent) < 1,
+                        SData.strEvent          = strEvent;
+                elseif length(strEvent) < 1 && length(SData.strEvent) > 0,
+                        SData.strEvent          = {}; % use none
+                        %SData.strEvent = TPA_EventListManager;
+
+                end
+                
+                % show Record data
+                Par.DMB           = Par.DMB.ShowRecordData(201);                
+
+                
+            case 3,
+                return
+                % edit XY
+                
+            case 4,
+                return
+                % edit YT
+                
+           case 6,
+                % Next Trial Full load
+                return
+                 
+          case 21,
+                % Behavioral data compression
+                
+          case 22,
+                % Behavioral data check
+                if Par.DMB.VideoFileNum < 1 ,
+                    warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
+                    return
+                end;
+                
+                Par.DMB           = Par.DMB.ShowRecordData(201);
+                
+          case 31,
+                return                
                 
                 
             otherwise
@@ -861,16 +531,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fManageTwoPhoton
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fManageEvent (nested in main)
-% * *
 % * * Manages event data for analysis
-% * *
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fManageEvent(hObject, eventdata, selType)
         %
@@ -884,8 +547,7 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         % Check Event actions
         %%%%%%%%%%%%%%%%%%%%%%
         switch selType,
-            case 1,
-                % load previous
+            case 1,   % load previous
                 [csFilenames, sPath] = uigetfile( ...
                     { ...
                     '*.xls', 'xls Files'; ...
@@ -902,8 +564,8 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 end;
                 try
                 userDataFileName    = fullfile(sPath,csFilenames);
-                load(userDataFileName,'StrEvent');
-                SData.strEvent       = StrEvent;
+                load(userDataFileName,'strEvent');
+                SData.strEvent       = strEvent;
                 catch ex
                         errordlg(ex.getReport('basic'),'File Type Error','modal');
                 end
@@ -914,23 +576,23 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 if ~strcmp(buttonName,'Yes'), return; end;
                 
                 SData.strEvent        = {};
+                %SData.strEvent          = TPA_EventListManager;
+
                 
-            case 3,
-%                 % save
+            case 3,       % save
 %                 if Par.DMB.BehaviorNum < 1 ,
 %                     warndlg('Please select Trial and load the Behavior image data first.');
 %                     return
 %                 end;
                 
                 % start save
-                Par.DMB                     = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'StrEvent',SData.strEvent);
+                Par.DMB                     = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'strEvent',SData.strEvent);
                 
-            case 4,
-                % load
+            case 4,    % load
                 [Par.DMB,SData.strEvent]   = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
                 
 
-            case 5,
+            case 5, % NA
                 return
                 
             case 11, % Init
@@ -940,14 +602,14 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
             case 12, % Load
                 
                 % load SSave structure
-                fManageJaneliaExperiment(0,0,2);
+                fManageExperiment(0,0,2);
                 dmEVAD.ClassPrm = SSave.StrEventClass;
                 
              case 13, % Save
                 
                 % save to SSave structure
                 SSave.StrEventClass = dmEVAD.ClassPrm;
-                fManageJaneliaExperiment(0,0,3);
+                fManageExperiment(0,0,8);
                 
             case 14, % Traing on current event data
                 
@@ -981,6 +643,8 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                     
                     % prevent old data ask question
                     SData.strEvent      = {};
+                    %SData.strEvent = TPA_EventListManager;
+
                 
                     % set trial
                     [Par.DMB,isOK]      = Par.DMB.SetTrial(trialInd);
@@ -1002,35 +666,35 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 % Preview
                 SData.strEvent          = strEventEst;
   
-            case 20, % Update params for trajectories - KLT Optical Flow
+            case 20 % Update params for trajectories - KLT Optical Flow
                 
-                % assume object is initialized
+                % assume object is initialized                
+                objTrack    = SetParameters(objTrack);
+
+                % which view
+                viewNames = {'side','front'};
+                [s,ok] = listdlg('PromptString','Select View for Trajectory Analysis :','ListString',viewNames,'SelectionMode','single','ListSize',[400 500]);
+                if ~ok, return; end;
+                activeView  = viewNames{s};
                 
-                % config small GUI 
-                options              = struct('Resize','on','WindowStyle','modal','Interpreter','none');
-                prompt                = {'Min Trajectory Length  [frames]',...
-                                         'Min Move Length (std(X)+std(Y)) [pix]',...            
-                                        };
-                name                = 'Config Track Parameters';
-                numlines            = 1;
-                defaultanswer       ={num2str(objTrack.TrackMinLength),num2str(objTrack.TrackPosStdThr)};
-                answer              = inputdlg(prompt,name,numlines,defaultanswer,options);
-                if isempty(answer), return; end;
-
-
-                % try to configure
-                objTrack.TrackMinLength   = max(1,min(1000,str2num(answer{1})));
-                objTrack.TrackPosStdThr   = max(1,min(1000,str2num(answer{2})));
+                % which ROI
+                % load
+                [Par.DMB,SData.strEvent]   = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
+                
+                % MARIA IS WORKING ON DECIMATED DATA - INLCUDING ROIS
+                decimFactor                 = 1; % Par.DMB.DecimationFactor(1);
+                objTrack                    = SetTrajectoriesForROI(objTrack, SData.strEvent,decimFactor);
+                
                 
                 DTP_ManageText([], 'Behavior : Track parameters are updated.', 'I' ,0)   ;   
                 
                 
             case 21, % Find trajectories - KLT Optical Flow
                 
-                if verLessThan('matlab', '8.4.0'), 
-                    errordlg('This function requires Matlab R2014b'); 
-                    return; 
-                end;
+%                 if verLessThan('matlab', '8.4.0'), 
+%                     errordlg('This function requires Matlab R2014b'); 
+%                     return; 
+%                 end;
 
                 
                 % test init behavior
@@ -1039,31 +703,96 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                     return
                 end;
                 
-                % close all figures - will prevent event data sync problem
-                %fCloseFigures();
-                
                 % determine if we have current event info
                 if isempty(SData.imBehaive),
-                    [Par.DMB, SData.imBehaive] = Par.DMB.LoadBehaviorData(Par.DMB.Trial,'side');
-                else
-                   % Par.DMB                    = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'StrEvent',SData.strEvent);
+                    [Par.DMB, SData.imBehaive] = Par.DMB.LoadBehaviorData(Par.DMB.Trial,'all');
                 end
                 
-                
                 % Init Tracking algorithm 
-                objTrack            = TrackBehavior(objTrack);
+                objTrack            = TrackBehavior(objTrack, activeView);
 
                 
-            case 22, % Filtered
+            case 22 % Filtered
                 
                 objTrack            = ShowLinkage(objTrack, true);
 
-            case 23, % Filtered
+            case 23 % Show Average
                 
-                objTrack            = ShowLinkage(objTrack, false);
+                objTrack            = ShowAverage(objTrack);
                 
-            case 24,
-        end;
+            case 24 % Show Volume
+                
+                objTrack            = ShowVolume(objTrack);
+         
+            case 25 % Save Event 
+                
+                % load
+                [Par.DMB,SData.strEvent]   = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
+                %SData.strEvent              = {}; %TPA_EventListManager;
+                
+                % create event structure from tracking data
+                [objTrack,trackPos]         = GetAverageTrack(objTrack);
+                newEvent                    = TPA_EventManager;
+                newEvent.Name               = sprintf('EV:%s:AverTrajX',activeView);
+                newEvent.Data               = trackPos(:,2); 
+                len                         = length(SData.strEvent)+1;
+                SData.strEvent{len}         = newEvent;
+                
+                newEvent                    = TPA_EventManager;
+                newEvent.Name               = sprintf('EV:%s:AverTrajY',activeView);
+                newEvent.Data               = trackPos(:,3);  
+                len                         = length(SData.strEvent)+1;
+                SData.strEvent{len}         = newEvent;
+                
+                % start save
+                Par.DMB                     = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'strEvent',SData.strEvent);
+                
+            case 26 % Set ROI for trajectories
+                
+                % load
+                [Par.DMB,SData.strEvent]   = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
+                
+                % MARIA IS WORKING ON DECIMATED DATA - INLCUDING ROIS
+                decimFactor                 = 1; % Par.DMB.DecimationFactor(1);
+                objTrack                    = SetTrajectoriesForROI(objTrack, SData.strEvent,decimFactor);
+                
+ 
+           case 31 % Manual trajectory labeler
+                               
+                trajLabeler                  = TPA_TrajectoryLabeler();
+                
+           case 32 % Save trajectory labeler data as event
+               
+                % load
+                [Par.DMB,SData.strEvent]   = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
+                               
+                if length(SData.strEvent) > 0
+                buttonName = questdlg('Previous Behaivioral Event data is found. Would you like?', 'Warning','Cancel','Merge','Overwrite','Cancel');
+                if strcmp(buttonName,'Cancel'), return; end
+                if strcmp(buttonName,'Overwrite'), SData.strEvent = {}; end
+                end
+                
+                roiNum                     = trajLabeler.GetRoiNum();
+                for m = 1:roiNum
+                    roiPos                 = trajLabeler.GetRoiPosition(m);
+                    roiName                = trajLabeler.GetRoiName(m);
+                
+                    % create event structure from tracking data
+                    newEvent{1}             = TPA_EventManager;
+                    newEvent{1}.Name        = sprintf('TX:%s',roiName);
+                    newEvent{1}.Data        = roiPos(:,1)./400; 
+                    newEvent{2}             = TPA_EventManager;
+                    newEvent{2}.Name        = sprintf('TY:%s',roiName);
+                    newEvent{2}.Data        = roiPos(:,2)./400; 
+                
+                    % assign and save
+                    SData.strEvent          = cat(1,SData.strEvent(:),newEvent(:));
+                end
+                
+                % start save
+                Par.DMB                     = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'strEvent',SData.strEvent);
+        
+        end
         
         
         %%%
@@ -1075,16 +804,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fManageEvent
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fManageTwoPhoton (nested in main)
-% * *
-% * * shows and explore image data. fix some artifacts
-% * *
+% * * shows and explore two photon image data. fix some artifacts
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fManageTwoPhoton(hObject, eventdata, selType)
         
@@ -1095,14 +817,18 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         switch selType,
             case 1, % selection
                 
-                [Par.DMT,isOK]              = fSelectTrial(Par.DMT);            %vis4d(uint8(SData.imTwoPhoton));
+                [Par.DMT,isOK]              = GuiSelectTrial(Par.DMT);            %vis4d(uint8(SData.imTwoPhoton));
                 if ~isOK,
                     DTP_ManageText([], 'TwoPhoton : trial selection failed', 'E' ,0)   ;                  
                 end
+                if ~isequal(Par.DMT.Trial,Par.DMB.Trial), 
+                    DTP_ManageText([], 'TwoPhoton and Behavior datasets have different trials numbers', 'W' ,0)   ;             
+                end
+                
                 
             case 11,
                 % determine data params
-                [Par.DMT,isOK]              = fSetDataParameters(Par.DMT);
+                [Par.DMT,isOK]              = GuiSetDataParameters(Par.DMT);
                 if ~isOK,
                     DTP_ManageText([], 'TwoPhoton : configuration parameters are not updated', 'W' ,0)   ;                  
                 end
@@ -1117,7 +843,8 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 [Par.DMT, SData.imTwoPhoton]      = Par.DMT.LoadTwoPhotonData(Par.DMT.Trial);
                 [Par.DMT, strROI]                 = Par.DMT.LoadAnalysisData(Par.DMT.Trial,'strROI');
                 % this code helps with sequential processing of the ROIs: use old one in the new image
-                if length(strROI) > 0 && length(SData.strROI) > 0,
+                %SData.strROI                    = strROI;
+                if length(SData.strROI) > 0,
                     buttonName                  = questdlg('Would you like to use ROI data from previous trial?');  
                     if ~strcmp(buttonName,'Yes'),  
                         SData.strROI          = strROI;
@@ -1140,7 +867,8 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 end;
                 %TPA_ImageViewer(SData.imTwoPhoton);
                 %TPA_TwoPhotonEditorXY(SData.imTwoPhoton);
-                Par             = TPA_TwoPhotonEditorXY(Par);
+                %Par             = TPA_TwoPhotonEditorXY(Par);
+                TPA_TwoPhotonEditorXY();  % Par is global
                 
            case 4,
                 % preview YT
@@ -1149,7 +877,6 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                     return
                 end;
                 Par             = TPA_TwoPhotonEditorYT(Par);
-                %TPA_TwoPhotonEditorYT(SData.imTwoPhoton);
                 
            case 5,
                 % Next Trial Full load
@@ -1183,16 +910,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fManageTwoPhoton
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fManageRegistration (nested in main)
-% * *
 % * * Image registration :  fix some artifacts
-% * *
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fManageRegistration(hObject, eventdata, selType)
         
@@ -1337,19 +1057,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fManageRegistration
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
-
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fManageROI (nested in main)
-% * *
-% * * load/draw ROIs for analysis
-% * *
+% * * load/draw/manage ROIs for analysis
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fManageROI(hObject, eventdata, selType)
         %
@@ -1363,7 +1073,7 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         % Load Roi
         %%%%%%%%%%%%%%%%%%%%%%
         switch selType,
-            case 1,
+            case 1
                 
                 [csFilenames, sPath] = uigetfile( ...
                     { ...
@@ -1386,8 +1096,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 catch ex
                         errordlg(ex.getReport('basic'),'File Type Error','modal');
                 end
+                DTP_ManageText([], sprintf('TwoPhoton : Loaded ROIs from file %s.',csFilenames), 'I'); 
                 
-            case 2, % new
+            case 2 % new
                 
                 buttonName = questdlg('All the previous ROI data will be lost', 'Warning');
                 if ~strcmp(buttonName,'Yes'), return; end;
@@ -1396,7 +1107,7 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 % start save
                 Par.DMT                 = Par.DMT.SaveAnalysisData(Par.DMT.Trial,'strROI',SData.strROI);                
                 
-            case 3,
+            case 3
                 % save
 %                 if Par.DMT.TwoPhotonNum < 1 ,
 %                     warndlg('Please select Trial and load the Behavior image data first.');
@@ -1406,92 +1117,201 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 % start save
                 Par.DMT                 = Par.DMT.SaveAnalysisData(Par.DMT.Trial,'strROI',SData.strROI);                
                 
-            case 4,
+            case 4
                 % Load
                 [Par.DMT,SData.strROI]     = Par.DMT.LoadAnalysisData(Par.DMT.Trial,'strROI');
-
+                
+                
+            case 5 % Load from specific File and Z stack
+                
+                [csFilenames, sPath] = uigetfile( ...
+                    { ...
+                    '*.mat', 'Mat Files'; ...
+                    '*.*', 'All Files'}, ...
+                    'OpenLocation'  , Par.DMT.RoiDir, ...
+                    'Multiselect'   , 'off');
+                
+                if isnumeric(sPath), return, end;   % Dialog aborted
+                
+                % if single file selected
+                if iscell(csFilenames),   csFilenames = csFilenames{1};   end;
+                
+                try
+                    userDataFileName    = fullfile(sPath,csFilenames);
+                    load(userDataFileName,'strROI');
+                catch ex
+                        errordlg(ex.getReport('basic'),'File Type Error','modal');
+                end
+   
+                % filter by Z - stack
+                [Par.DMT, strROI]      = LoadRoiData(Par.DMT, strROI );
+                SData.strROI           = cat(2,SData.strROI,strROI);
+           
                             
-            case 5,
-                % Auto Detect of ROIs
-                buttonName = questdlg('All the previous ROI data will be lost', 'Warning');
-                if ~strcmp(buttonName,'Yes'), return; end;
-                
-                
-                dmROIAD                 = SetData(dmROIAD,SData.imTwoPhoton);
-                dmROIAD                 = SegmentSpaceTime(dmROIAD);
-                dmROIAD                 = PlayImgDFF(dmROIAD);
-                [dmROIAD,SData.strROI]  = ExtractROI(dmROIAD);
-                dmROIAD                 = DeleteData(dmROIAD);
-                
-                % update counters and save
-                SData.strManager.roiCount = length(SData.strROI);
-                fManageJaneliaExperiment(0,0,3); 
-                
-                % open viewer
-                Par                     = TPA_TwoPhotonEditorXY(Par);
-                
-            case 6,
+%             case 6, % N.A.
+%                 % Auto Detect of ROIs
+%                 buttonName = questdlg('All the previous ROI data will be lost', 'Warning');
+%                 if ~strcmp(buttonName,'Yes'), return; end;
+%                 
+%                 
+%                 dmROIAD                 = SetImgData(dmROIAD,SData.imTwoPhoton);
+%                 dmROIAD                 = SegmentSpaceTime(dmROIAD, 11);
+%                 dmROIAD                 = PlayImgDFF(dmROIAD);
+%                 [dmROIAD,SData.strROI]  = ExtractROI(dmROIAD);
+%                 dmROIAD                 = DeleteData(dmROIAD);
+%                 
+%                 % update counters and save
+%                 SData.strManager.roiCount = length(SData.strROI);
+%                 fManageJaneliaExperiment(0,0,3); 
+%                 
+%                 % open viewer
+%                 Par                     = TPA_TwoPhotonEditorXY(Par);
+%                 
+%            case 6,
                 % preview mode only
 %                 tmpFigNum               = FigNum + 5;
 %                 Par                     = TPA_PreviewROI(Par,SData.imTwoPhoton,SData.strROI,tmpFigNum);
 %                 return
                 
                 
-            case 11,
-                % Auto Detect of ROI - Soft Options
+%             case 11,
+%                 % Auto Detect of ROI - Soft Options
+%                 
+%                 dmROIAD                 = SetData(dmROIAD,SData.imTwoPhoton);
+%                 dmROIAD                 = SegmentSpaceTime(dmROIAD,1);
+%                 dmROIAD                 = PlayImgDFF(dmROIAD);
+% 
+%             case 12,
+%                 % Auto Detect of ROI - Soft Options
+%                 
+%                 dmROIAD                 = SetData(dmROIAD,SData.imTwoPhoton);
+%                 dmROIAD                 = SegmentSpaceTime(dmROIAD,2);
+%                 dmROIAD                 = PlayImgDFF(dmROIAD);
+%                 
+%             case 13,
+%                 % Auto Detect of ROI - Soft Options
+%                 
+%                 dmROIAD                 = SetData(dmROIAD,SData.imTwoPhoton);
+%                 dmROIAD                 = SegmentSpaceTime(dmROIAD,3);
+%                 dmROIAD                 = PlayImgDFF(dmROIAD);
                 
-                dmROIAD                 = SetData(dmROIAD,SData.imTwoPhoton);
-                dmROIAD                 = SegmentSpaceTime(dmROIAD,1);
-                dmROIAD                 = PlayImgDFF(dmROIAD);
+           case 10
+                % Init & Set Parameters 
+                dmROIAD                 = Configure(dmROIAD);
+                %Par.Roi.UseEffectiveROI = dmROIAD.UseEffectiveROI;
 
-            case 12,
-                % Auto Detect of ROI - Soft Options
+           case 11
+                % Use Functional dF/F for segmentation
+                %dmROIAD                 = TPA_ManageRoiAutodetect();
+                dmROIAD                 = SetImgData(dmROIAD,SData.imTwoPhoton);
+                %dmROIAD                 = SetRoiData(dmROIAD,SData.strROI);
+                %dmROIAD                 = SegmentSortingFunctional(dmROIAD,81);
+                dmROIAD                 = SegmentSpatialAdaptiveThreshold(dmROIAD);
+                dmROIAD                 = ExtractROI(dmROIAD,77);
+
+           case 12
+                % Use Only spatial fluorescence for segmentation
+                %dmROIAD                 = TPA_ManageRoiAutodetect();
+                dmROIAD                 = SetImgData(dmROIAD,SData.imTwoPhoton);
+                %dmROIAD                 = SetRoiData(dmROIAD,SData.strROI);
+                %dmROIAD                 = SegmentSortingSpatial(dmROIAD,91);
+                %dmROIAD                 = SegmentSortingSpatialXY(dmROIAD,91);
+                %dmROIAD                 = SegmentByVoting(dmROIAD,91);
+                dmROIAD                 = SegmentSpatialAdaptiveThreshold(dmROIAD);
+                %dmROIAD                 = SegmentSortingMinmal(dmROIAD,91);
+                dmROIAD                 = ExtractROI(dmROIAD,78);
                 
-                dmROIAD                 = SetData(dmROIAD,SData.imTwoPhoton);
-                dmROIAD                 = SegmentSpaceTime(dmROIAD,2);
-                dmROIAD                 = PlayImgDFF(dmROIAD);
+%             case {13,14}, % Not in use
+%                 % Auto Detect of ROI - Soft Options
+%                 
+%                 dmROIAD                 = SetImgData(dmROIAD,SData.imTwoPhoton);
+%                 dmROIAD                 = SegmentSpaceTime(dmROIAD,4);
+%                 dmROIAD                 = PlayImgDFF(dmROIAD);
+%                 
+%             case 15,
+%                 % Replay with Original
+%                 dmROIAD                 = PlayImgOverlay(dmROIAD);
                 
-            case 13,
-                % Auto Detect of ROI - Soft Options
-                
-                dmROIAD                 = SetData(dmROIAD,SData.imTwoPhoton);
-                dmROIAD                 = SegmentSpaceTime(dmROIAD,3);
-                dmROIAD                 = PlayImgDFF(dmROIAD);
-                
-            case 14,
-                % Auto Detect of ROI - Soft Options
-                
-                dmROIAD                 = SetData(dmROIAD,SData.imTwoPhoton);
-                dmROIAD                 = SegmentSpaceTime(dmROIAD,4);
-                dmROIAD                 = PlayImgDFF(dmROIAD);
-                
-            case 15,
-                % Replay with Original
-                dmROIAD                 = PlayImgDFF(dmROIAD);
-                
-            case 16,
-                % Replay with dF/F
-                dmROIAD                 = PlayImgOverlay(dmROIAD);
+            case 16
+                % Display ROIs and Effective One
+                %dmROIAD                 = SetImgData(dmROIAD,SData.imTwoPhoton);
+                %dmROIAD                 = SetRoiData(dmROIAD,SData.strROI);
+                dmROIAD                 = ShowRois(dmROIAD);
                 
                             
-            case 17,
-                % Auto Detect of ROI - Extract ROI info
-                buttonName = questdlg('All the previous ROI data will be lost', 'Warning');
-                if ~strcmp(buttonName,'Yes'), return; end;
+            case 17
                 
+                strROI                 = GetRoiData(dmROIAD);
+                if isempty(strROI)
+                    warndlg(sprintf('AutoDetect : ROI is not created. Please run the process again.')); return;
+                end
                 
-                [dmROIAD,SData.strROI]  = ExtractROI(dmROIAD);
-                dmROIAD                 = DeleteData(dmROIAD);
+                % Ask about event data
+                doMerge = false;
+                if length(SData.strROI) > 0
+                buttonName = questdlg('Previous Two Photon ROI data is found. Would you like?', 'Warning','Cancel','Merge','Overwrite','Cancel');
+                if strcmp(buttonName,'Cancel'), return; end
+                % check if merge is required
+                doMerge = strcmp(buttonName,'Merge');
+                end
                 
-                % update counters and save
-                SData.strManager.roiCount = length(SData.strROI);
-                fManageJaneliaExperiment(0,0,3); 
-                
-                % open viewer
-                Par                     = TPA_TwoPhotonEditorXY(Par);
+                if doMerge
+                    SData.strROI           = cat(1,SData.strROI(:),strROI(:));
+                else
+                    SData.strROI           = strROI;
+                end
 
+
+                %Par.Roi.UseEffectiveROI = true;        % override user ROI contour by effective one
                 
-        end;
+                DTP_ManageText([], sprintf('AutoDetect : Use Two Photon -> ROI -> to remember the effective ROI computations.'), 'I');
+                %dmROIAD                 = Init(dmROIAD);
+                            
+
+
+           case 21
+                % Init & Set Parameters 
+                dmRoiGal                 = Configure(dmRoiGal);
+
+           case 22
+                % load data
+                dmRoiGal                 = LoadImageData(dmRoiGal,Par.DMT);
+
+           case 23
+                % Time Ferq Analysis
+                dmRoiGal                 = SegmentSpaceTime(dmRoiGal);
+
+            case 24
+                % export ROIs
+                [dmRoiGal,strROI]            = ExtractROI(dmRoiGal,121);
+                %strROI                 = GetRoiData(dmRoiGal);
+                if isempty(strROI)
+                    warndlg(sprintf('AutoDetect : ROI is not created. Please run the process again.')); return;
+                end
+                
+                % Ask about event data
+                doMerge = false;
+                if length(SData.strROI) > 0
+                buttonName = questdlg('Previous Two Photon ROI data is found. Would you like?', 'Warning','Cancel','Merge','Overwrite','Cancel');
+                if strcmp(buttonName,'Cancel'), return; end
+                % check if merge is required
+                doMerge = strcmp(buttonName,'Merge');
+                end
+                
+                if doMerge
+                    SData.strROI           = cat(1,SData.strROI(:),strROI(:));
+                else
+                    SData.strROI           = strROI;
+                end
+
+
+                %Par.Roi.UseEffectiveROI = true;        % override user ROI contour by effective one
+                
+                DTP_ManageText([], sprintf('AutoDetect : Use Two Photon -> ROI -> to remember the effective ROI computations.'), 'I');
+
+            otherwise
+                error('Bad Selection')
+        end
         
         %%%
         % Save ROI do not ask
@@ -1502,18 +1322,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fManageROI
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fAnalysisBigROI (nested in main)
-% * *
-% * * big ROI analysis
-% * *
+% * * ROI averaging
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fAnalysisROI(hObject, eventdata, selType)
         %
@@ -1542,61 +1353,41 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fAnalysisROI
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fArtifacts (nested in main)
-% * *
 % * * Removes Artifacts from Average values of the channels
-% * *
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fArtifactsROI(hObject, eventdata, selType)
         %
-                    
-        warndlg('Requires Red and Green channel. We Apologize. Please come later .');
-        return
-        
-        %%%%%%%%%%%%%%%%%%%%%%
-        % Init
-        %%%%%%%%%%%%%%%%%%%%%%
         switch selType,
             case 1,
-                Cmnd = 'SmoothSpatial';     % see DTP_ProcessingROI
+                Par.Roi.ArtifactType = Par.ROI_ARTIFACT_TYPES.BLEACHING;        % see TPA_FixArtifactROI
             case 2,
-                Cmnd = 'DeCorrelation';     % see DTP_ProcessingROI
+                Par.Roi.ArtifactType = Par.ROI_ARTIFACT_TYPES.SLOW_TIME_WAVE;      % see TPA_FixArtifactROI
             case 3,
-                Cmnd = 'BleachingMotion';     % see DTP_ProcessingROI
+                Par.Roi.ArtifactType = Par.ROI_ARTIFACT_TYPES.FAST_TIME_WAVE;    % see TPA_FixArtifactROI
+            case 4,
+                Par.Roi.ArtifactType = Par.ROI_ARTIFACT_TYPES.POLYFIT2;    % see TPA_FixArtifactROI
             otherwise
-                errordlg('Unsupported Case for fArtifacts Cmnd')
+                errordlg('Unsupported Case for Artifact removal')
         end;
+        
         %%%%%%%%%%%%%%%%%%%%%%
         % Fix channels mutual correlation or smoothing
         %%%%%%%%%%%%%%%%%%%%%%
-        tmpFigNum               = Par.FigNum + 101;
-        [Par,SData.strROI1,SData.strROI2]       = DTP_FixArtifactsROI(Par, Cmnd, SData.strROI1,SData.strROI2,tmpFigNum);
+        tmpFigNum                 = Par.Debug.ArtifactFigNum;
+        [Par,strROI]              = TPA_FixArtifactsROI(Par, SData.strROI,tmpFigNum);
         
         % save
-        %SData.strROI            = strROI;
+        SData.strROI            = strROI;
         
         % Update figure components
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fArtifacts
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fProcessROI (nested in main)
-% * *
-% * * Post processing of the ROI data after averaging
-% * *
+% * * dF/F processing of the ROI data after averaging
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fProcessROI(hObject, eventdata, selType)
         %
@@ -1605,17 +1396,21 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         %%%%%%%%%%%%%%%%%%%%%%
         
         switch selType,
-            case 1,
+            case 1
                 Par.Roi.ProcessType = Par.ROI_DELTAFOVERF_TYPES.MEAN;        % see TPA_ProcessROI
-            case 2,
+            case 2
                 Par.Roi.ProcessType = Par.ROI_DELTAFOVERF_TYPES.MIN10;      % see TPA_ProcessROI
-            case 3,
+            case 3
                 Par.Roi.ProcessType = Par.ROI_DELTAFOVERF_TYPES.STD;    % see TPA_ProcessROI
-            case 4,
+            case 4
                 Par.Roi.ProcessType = Par.ROI_DELTAFOVERF_TYPES.MIN10CONT;    % see TPA_ProcessROI
+            case 5
+                Par.Roi.ProcessType = Par.ROI_DELTAFOVERF_TYPES.MIN10BIAS;    % see TPA_ProcessROI
+            case 6
+                Par.Roi.ProcessType = Par.ROI_DELTAFOVERF_TYPES.MAX10;    % see TPA_ProcessROI
             otherwise
                 errordlg('Unsupported Case for Par.Roi.ProcessType')
-        end;
+        end
         
         %%%%%%%%%%%%%%%%%%%%%%
         % Do Analysis
@@ -1634,18 +1429,98 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fProcessROI
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fMultipleTrials (nested in main)
-% * *
+% * * Two Photon based Detection & Classification of events on dF/F data
+% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+    function fTwoPhotonDetection(hObject, eventdata, selType)
+        %
+        %%%%%%%%%%%%%%%%%%%%%%
+        % Init
+        %%%%%%%%%%%%%%%%%%%%%%    
+        fMultipleGroups(0, 0, 10); % init if required : TPED - internal object
+        
+        switch selType,
+            case {1,3},
+                % Init
+                
+                dmMTGD.MngrData.TPED = SetDeconvolutionParams(dmMTGD.MngrData.TPED,121);
+                
+            case 2,
+                % process df/f - single trial
+                roiNum  = length(SData.strROI);
+                if roiNum < 1,
+                    warndlg('No ROI data is loaded');
+                    return
+                end
+                dataLen = size(SData.strROI{1}.Data,1);
+                if dataLen < 1,
+                    warndlg('ROI data need to be processed to compute dF/F');
+                    return
+                end
+                dffData = zeros(dataLen,roiNum);
+                for m = 1:roiNum,
+                    dffData(:,m) = SData.strROI{m}.Data(:,2);
+                end
+                %[dmMTGD.MngrData.TPED,dffData] = FastEventDetect(dmMTGD.MngrData.TPED,dffData,122);
+                [dmMTGD.MngrData,dffData] = ComputeSpikes(dmMTGD.MngrData,dffData,95);
+                for m = 1:roiNum,
+                    SData.strROI{m}.Data(:,3) = double(dffData(:,m));
+                end
+                 DTP_ManageText([], 'TwoPhoton : Detection results are not saved to the file.', 'W' ,0)   ;   
+               
+           case 4,
+                % Multi Trial Event detection 
+                %warndlg('Multi Trial Event Detection is not ready yet')
+                dmMTGD.MngrData = LoadDataFromTrials(dmMTGD.MngrData,Par);
+                roiNum  = size(dmMTGD.MngrData.DbROI,1);
+                if roiNum < 1,
+                    warndlg('No ROI data is loaded');
+                    return
+                end
+                for m = 1:roiNum,
+                    dffData                     = dmMTGD.MngrData.DbROI{m,4};
+                    %[dmMTGD.MngrData,spikeData] = ComputeSpikes(dmMTGD.MngrData,dffData,97);
+                    % more lower level
+                    [dmMTGD.MngrData.TPED,spikeData] = ManualEventDetect(dmMTGD.MngrData.TPED,dffData,99);
+                    dmMTGD.MngrData.DbROI{m,5}  = spikeData;
+                end
+
+                
+                dmMTGD.MngrData = SaveDataFromTrials(dmMTGD.MngrData);
+
+           case 5,
+                % Save ROI data 
+
+          case 6, % Configure
+                %dmMTTP = TPA_MultiTrialTwoPhotonManager();
+                dmMTTP = dmMTTP.SetParams();
+                
+          case 7, % Analysis
+                % Process raw image data 
+                dmMTTP = dmMTTP.LoadDataFromTrials(Par);
+
+          case 8, % Compute
+                % 
+                %dmMTTP = dmMTTP.DecomposeSVD();
+                dmMTTP = dmMTTP.DecomposeKmeans();
+                
+          case 9, % Export to ROIs
+                % 
+                dmMTTP = dmMTTP.ExtractROI();
+                dmMTTP = dmMTTP.SaveDataFromTrials(Par);
+                
+                
+            otherwise
+                errordlg('Detection of Time events on dF/F data is coming soon  ')
+        end;
+        % Update figure components
+        fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
+        
+    end
+
+% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 % * * Shows Behavior and TwoPhoton results 
-% * *
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fMultipleTrials(hObject, eventdata, selType)
         
@@ -1653,52 +1528,79 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         %%%%%%%%%%%%%%%%%%%%%%
         % Show
         %%%%%%%%%%%%%%%%%%%%%%
-        switch selType,
+        switch selType
             
-           case 1, % Full experiment image registration
+           case 1 % Full experiment image registration
                 Par                     = TPA_MultiTrialRegistration(Par);
                  
-           case 2,
+           case 2
                 % Align all the ROIs to first one that has been marked
 
                 buttonName = questdlg('All the ROI data will be chnaged. Each ROI will have one exact position for all trials. Results are irreversible', 'Warning');
                 if ~strcmp(buttonName,'Yes'), return; end;
+                                
+                Par                     = TPA_MultiTrialRoiAssignment(Par);
                 
-                Par                     = TPA_MultiTrialRoiAlignment(Par);
-                
-            case 13,
-                % dF/F for all trials :  Fo = Aver
-                Par.Roi.ProcessType     = Par.ROI_DELTAFOVERF_TYPES.MEAN;        % see TPA_ProcessROI
-                Par                     = TPA_MultiTrialProcess(Par);
-                
-            case 14,
-                % dF/F for all trials :  Fo = min 10%
-                Par.Roi.ProcessType     = Par.ROI_DELTAFOVERF_TYPES.MIN10;      % see TPA_ProcessROI                
-                Par                     = TPA_MultiTrialProcess(Par);
-
-            case 15,
-                % dF/F for all trials :  Fo = min 10% - continuous sections
-                Par.Roi.ProcessType     = Par.ROI_DELTAFOVERF_TYPES.MIN10CONT;        % see TPA_ProcessROI
-                Par                     = TPA_MultiTrialProcess(Par);
-                
-            
-            case 4,
+            case 4
                 % preliminary show
                 tmpFigNum               = Par.FigNum + 201;
-                [Par,dbROI,dbEvent]     = TPA_MultiTrialShow(Par,tmpFigNum);
+                [Par,dbROI,dbEvent]     = TPA_MultiTrialRoiShow(Par,tmpFigNum);
                 
                
-            case 5,
+            case 5
                 % open editor
                 %tmpFigNum               = Par.FigNum + 251;
                 Par                     = TPA_MultiTrialExplorer(Par);
                 
-            case 6,
+            case 6
                 % open editor from Jaaba excel
                 Par                     = TPA_MultiTrialExcelExplorer(Par);
                 
+                
+            case 13
+                % dF/F for all trials :  Fo = Aver
+                Par.Roi.ArtifactType    = Par.ROI_ARTIFACT_TYPES.NONE;
+                Par.Roi.ProcessType     = Par.ROI_DELTAFOVERF_TYPES.MEAN;        % see TPA_ProcessROI
+                Par                     = TPA_MultiTrialRoiProcess(Par);
+                
+            case 14
+                % dF/F for all trials :  Fo = min 10%
+                Par.Roi.ArtifactType    = Par.ROI_ARTIFACT_TYPES.NONE;
+                Par.Roi.ProcessType     = Par.ROI_DELTAFOVERF_TYPES.MIN10;      % see TPA_ProcessROI                
+                Par                     = TPA_MultiTrialRoiProcess(Par);
 
-           case 21,
+            case 15
+                % dF/F for all trials :  Fo = min 10% - continuous sections
+                Par.Roi.ArtifactType    = Par.ROI_ARTIFACT_TYPES.NONE;
+                Par.Roi.ProcessType     = Par.ROI_DELTAFOVERF_TYPES.MIN10CONT;        % see TPA_ProcessROI
+                Par                     = TPA_MultiTrialRoiProcess(Par);
+                
+            case 16 % For Itshik - with artifact removal
+                % dF/F for all trials :  Fo = min 10% 
+                Par.Roi.ArtifactType    = Par.ROI_ARTIFACT_TYPES.FAST_TIME_WAVE;
+                Par.Roi.ProcessType     = Par.ROI_DELTAFOVERF_TYPES.MIN10;        % see TPA_ProcessROI
+                Par                     = TPA_MultiTrialRoiProcess(Par);
+            
+            case 17 
+                % dF/F for all trials :  Fo = min 10% + small bias 
+                Par.Roi.ArtifactType    = Par.ROI_ARTIFACT_TYPES.NONE;
+                Par.Roi.ProcessType     = Par.ROI_DELTAFOVERF_TYPES.MIN10BIAS;        % see TPA_ProcessROI
+                Par                     = TPA_MultiTrialRoiProcess(Par);
+ 
+           case 18 
+                % dF/F for all trials :  Fo = max 10% 
+                Par.Roi.ArtifactType    = Par.ROI_ARTIFACT_TYPES.NONE;
+                Par.Roi.ProcessType     = Par.ROI_DELTAFOVERF_TYPES.MAX10;        % see TPA_ProcessROI
+                Par                     = TPA_MultiTrialRoiProcess(Par);
+
+           case 19 
+                % dF/F for all trials :  Fo = min 10% and 75% on all trials 
+                Par.Roi.ArtifactType    = Par.ROI_ARTIFACT_TYPES.NONE;
+                Par.Roi.ProcessType     = Par.ROI_DELTAFOVERF_TYPES.MANY_TRIAL;        % see TPA_ProcessROI
+                Par                     = TPA_MultiTrialRoiProcess(Par);
+                
+                
+           case 21
                 % Behavioral data compression
                 if Par.DMB.VideoFrontFileNum < 1 && Par.DMB.VideoSideFileNum < 1 ,
                     warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
@@ -1710,31 +1612,227 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 trialInd                 = 1:Par.DMB.VideoSideFileNum;
                 Par.DMB                  = Par.DMB.CompressBehaviorData(trialInd,'all');
                 
+            case 22 % Adding new event to all trials
                 
-            case 22, % Adding new event to all trials
+                % check if dir structure is changed
+                %Par                     = TPA_MultiTrialEventAssignment(Par);
+                mtMngr                  = TPA_MultiTrialEventManager();
+                Par                     = mtMngr.MultiTrialEventAssignment(Par);
                 
-                Par                     = TPA_MultiTrialEventAssignment(Par);
+            case 23, % Removing events from all trials
+                
+                mtMngr                  = TPA_MultiTrialEventManager();
+                mtMngr                  = LoadDataFromTrials(mtMngr,Par);
+                mtMngr                  = RemoveEventFromAllTrials(mtMngr);
+                
+            case 24, % Compute Average ROI value event to all trials 
+                
+                %Par                     = TPA_MultiTrialEventProcess(Par,0);
+                mtMngr                  = TPA_MultiTrialEventManager();
+                Par                     = mtMngr.MultiTrialEventProcess(Par,0);
+                
+            case 25,  % Manger of new/old/complex event to all trials
+                
+                %Par                     = TPA_MultiTrialEventCreate(Par);
+                mtMngr                  = TPA_MultiTrialEventManager();
+                Par                     = mtMngr.MultiTrialEventCreate(Par,0);
+                
+            case 26,
+                % preliminary show
+                tmpFigNum               = Par.FigNum + 231;
+                %[Par,dbROI,dbEvent]     = TPA_MultiTrialEventShow(Par,tmpFigNum);
+                mtMngr                  = TPA_MultiTrialEventManager();                
+                [Par,dbROI,dbEvent]     = mtMngr.MultiTrialEventShow(Par,tmpFigNum);   
+                
+            case 27,  % Copy event with trial index shift
+                
+                mtMngr                  = TPA_MultiTrialEventManager();
+                mtMngr                  = LoadDataFromTrials(mtMngr,Par);
+                [mtMngr,Par]            = mtMngr.MultiTrialEventIndexShift(Par,0);
+                
+                
+                
+           case 31, % Behavioral trajectory extraction and event generation
+                
+                if Par.DMB.VideoFrontFileNum < 1 && Par.DMB.VideoSideFileNum < 1 ,
+                    warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
+                    return
+                end
+                buttonName = questdlg('X and Y Behaivioral trajectory Events will be added.', 'Warning');
+                if ~strcmp(buttonName,'Yes'), return; end
+                
+                % assume that active view is side
+                
+                % assume that data is scaled by 2 in X and Y
+                [Par.DMB,isOK]       = Par.DMB.SetDecimation([2 2 1 1]); 
+                if ~isOK
+                    DTP_ManageText([], 'MultiTrial : Something wrong with decimation settings.', 'E' ,0)   ; 
+                    return
+                end
+                
+                % ROI
+                h = warndlg('User ROI to limit trajectories. Use decimation factor 2 to define the limit ROI');
+                uiwait(h);
+                fManageEvent(0,0,26);
+                                
+                % set new trial
+                for trialInd            = 1:Par.DMB.VideoSideFileNum,
+                
+                    % select
+                    [Par.DMB,isOK]          = Par.DMB.SetTrial(trialInd);
+                    assert(isOK,sprintf('Something wrong with data load in trial %d',trialInd))
+                
+                    % load Image, Events
+                    %fManageBehavior(0, 0, 2);
+                    [Par.DMB, SData.imBehaive] = Par.DMB.LoadBehaviorData(Par.DMB.Trial,'all');
+
+                    % tracking
+                    fManageEvent(0,0,21);
+                    
+                    % save trajectory events - average
+                    fManageEvent(0,0,25);
+                    % save trajectory events - diff
+                    %fManageEvent(0,0,26);
+                
+                    
+                end
+                
+           case 32, % BUG FIX IN TRAJ GENERATOR - MAKE OBJECT : CAN NOT BE REACHED FROM MENU
+                % Behavioral trajectory extraction and event generation
+                if Par.DMB.EventFileNum < 1 ,
+                    warndlg('Behavior is not selected or there are problems with event data. Please select Trial and load the data after that.');
+                    return
+                end;
+                
+                                
+                % set new trial
+                for trialInd            = 1:Par.DMB.VideoSideFileNum,
+                
+                    % select and load
+                    [Par.DMB,isOK]          = Par.DMB.SetTrial(trialInd);
+                    assert(isOK,sprintf('Something wrong with data load in trial %d',trialInd))
+                    [Par.DMB,SData.strEvent]   = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
                     
                 
-             otherwise
+                    % load Image, Events                                    
+                    eventNum                = length(SData.strEvent);
+                    badEvent                = false(eventNum,1);
+                    for k = 1:eventNum,
+                       
+                        if isa(SData.strEvent{k},'TPA_EventManager'),continue; end;
+                        if ~isfield(SData.strEvent{k},'Data'),badEvent(k) = true; continue; end;                        
+                        newEvent            = TPA_EventManager;
+                        newEvent.Name       = SData.strEvent{k}.Name;
+                        newEvent.Data       = SData.strEvent{k}.Data;
+                        SData.strEvent{k}   = newEvent;
+                        
+                    end
+                    % remove bad events
+                    SData.strEvent(badEvent) = [];
+
+                    
+                    % save trajectory events
+                    Par.DMB                 = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'strEvent',SData.strEvent);
+                
+                    
+                end
+                
+           case 33 % Show all behavioral events
+                
+                if Par.DMB.VideoFrontFileNum < 1 && Par.DMB.VideoSideFileNum < 1 ,
+                    warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
+                    return
+                end
+                
+                % names to look
+                xEventName               = sprintf('EV:%s:AverTrajX',activeView);
+                yEventName               = sprintf('EV:%s:AverTrajY',activeView);
+                xEventData               = [];
+                yEventData               = [];
+                                
+                % set new trial
+                for trialInd            = 1:Par.DMB.VideoSideFileNum,
+                
+                    % select
+                    [Par.DMB,isOK]          = Par.DMB.SetTrial(trialInd);
+                    assert(isOK,sprintf('Something wrong with data load in trial %d',trialInd))
+                
+                    % load Image, Events
+                    [Par.DMB, SData.strEvent]  = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
+                    
+                    % assign to db
+                    for m = 1:length(SData.strEvent)
+                       if strcmp(SData.strEvent{m}.Name,xEventName)
+                           xEventData = cat(2,xEventData,SData.strEvent{m}.Data(:,1));
+                       end
+                       if strcmp(SData.strEvent{m}.Name,yEventName)
+                           yEventData = cat(2,yEventData,SData.strEvent{m}.Data(:,1));
+                       end
+                    end
+                    
+                end   
+                
+                
+                figure(181),set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none')
+                plot(xEventData),title('X Trajectories'),ylabel('Pixels'),xlabel('Behavioral Frame #')
+                legend(num2str((1:Par.DMB.VideoSideFileNum)'));
+                figure(182),set(gcf,'Tag','AnalysisROI','Color','b'),clf; colordef(gcf,'none')
+                plot(yEventData),title('Y Trajectories'),ylabel('Pixels'),xlabel('Behavioral Frame #')
+                legend(num2str((1:Par.DMB.VideoSideFileNum)'));
+                
+                % 
+                saveFileName    = 'TrajectoryData.xlsx';
+                stat            = xlswrite(saveFileName,xEventData,        'X-Traj','A1');
+                stat            = xlswrite(saveFileName,yEventData,        'Y-Traj','A1');
+                
+                
+           case 41 % DNN Trajectory generation - Setup
+                % Labeler
+                lbl = VideoLabeler();
+%                 if Par.DMB.VideoFrontFileNum < 1 && Par.DMB.VideoSideFileNum < 1 
+%                     groundTruthLabeler();
+%                     %warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
+%                     return
+%                 end
+%              
+%                 [Par.DMB,isOK] = GuiSelectTrial(Par.DMB);
+%                 if ~isOK, return; end
+% 
+%                 % load side movie
+%                 fileDirName         = fullfile(Par.DMB.VideoDir,Par.DMB.VideoSideFileNames{Par.DMB.Trial});
+%                 groundTruthLabeler(fileDirName);
+                
+           case 42 % DNN Trajectory generation - Train and Test 
+                % Classifier
+                %dmCDNN = dmCDNN.SelectTrainData();
+                %dmCDNN = dmCDNN.TestAndTrainLabelerNetwork();
+                dataType = 101; % ask
+                netType  = 21;
+                dmCDNN = TestAndTrainSessionNetwork(dmCDNN, dataType, netType);
+                
+           case 43 % DNN Trajectory generation - Classify
+                % 
+                dmCDNN = dmCDNN.SelectTestData();
+                dmCDNN = dmCDNN.CreateTrajectories();
+                
+           case 44 % DNN Trajectory generation - Import events
+                % 
+                dmCDNN = dmCDNN.CreateEvents();
+
+            otherwise
                 errordlg('Unsupported Option')
-        end;
+                
+                
+        end
         
         
         % Update figure components
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fMultipleTrials
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fMultipleGroups (nested in main)
-% * *
-% * * Analysis of the combined Behavior and TwoPhoton results over many experriments
-% * *
+% * * Analysis of the combined Behavior and TwoPhoton results over many experiments
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fMultipleGroups(hObject, eventdata, selType)
         
@@ -1745,69 +1843,133 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         switch selType,
             
            case 1, % Use groups for analysis
-                % open editor
-                Par                     = TPA_MultiGroupExplorer(Par);
+                % Init
+                dmMultExp               = Init(dmMultExp);
                  
-%            case 2,
-%                 % Align all the ROIs to first one that has been marked
-%                 warndlg('')
-%                 
-%                 buttonName = questdlg('All the ROI data will be chnaged. Each ROI will have one exact position for all trials. Results are irreversible', 'Warning');
-%                 if ~strcmp(buttonName,'Yes'), return; end;
-%                 
-%                 Par                     = TPA_MultiTrialRoiAlignment(Par);
-
-            case 10, %  Init Group Manager
-                
-                % if nitialized before
-                %if (gdm.MngrData.DbRoiRowCount > 0), return; end;
-                if ~isempty(gdm.MngrData), return; end;
-                
-                gdm = Init(gdm,Par);
-                gdm = LoadData(gdm);
-                
-
-
-            case 11, %  Active Rois per Event
-                
-                fMultipleGroups(0, 0, 10); % init if required
-                
-                % select Events to Show
-                eventNames = gdm.MngrData.UniqueEventNames;
-                [s,ok] = listdlg('PromptString','Select Event :','ListString',eventNames,'SelectionMode','multi');
-                if ~ok, return; end;
-                
-                % do analysis
-                eventNamesSelected = eventNames(s);
-                gdm = ListMostActiveRoiPerEvent(gdm, eventNamesSelected);
-                
-
-            case 12, %  Early/Late/OnTime Rois per Event
-                
-                fMultipleGroups(0, 0, 10); % init if required
-                                
-                % select Events to Show
-                eventNames = gdm.MngrData.UniqueEventNames;
-                [s,ok] = listdlg('PromptString','Select Event :','ListString',eventNames,'SelectionMode','single');
-                if ~ok, return; end;
-                
-                % do analysis
-                eventNamesSelected = eventNames(s);
-                gdm = ListEarlyLateOntimeRoiPerEvent(gdm, eventNamesSelected);
+           case 2,
+                % Select TPA directories to compare
+                testType                = 11;
+                figNum                  = 81;
             
-            case 13, %  Show delay map for all trials per specific event
+                % select a database
+                dmMultExp               = TestShowAveragedTraces(dmMultExp, testType, figNum);
+                
+                
+           case 3,
+                % Select TPA directories to compare
+                dmCorr                  = TPA_MultiExperimentFunctionalReconstruction();
+                testType                = 11;
+                expId                   = 1;
+            
+                % select a database
+                dmCorr                   = TestSelect(dmCorr, testType);
+
+                % check load
+                dmCorr                  = LoadSingleExperiment(dmCorr, expId) ;        
+                dmCorr                  = LoadSingleExperiment(dmCorr, expId+1) ; 
+ 
+                % correlate
+                dmCorr                  = FunctionalExperimentCorrelation(dmCorr, expId); 
+                
+           case 4,
+                % Select BDA directories to compare
+                testType                = 11;
+                figNum                  = 181;
+            
+                % select a database
+                dmMultExp               = TestShowAveragedEvents(dmMultExp, testType, figNum);
+                
+           case 5,
+                % Select TPA directories to compare
+                testType                = 11;
+                figNum                  = 281;
+            
+                % select a database
+                dmMultExp               = TestShowAveragedTracesOrderedByCM(dmMultExp, testType, figNum);
+                
+
+           case 9 %  Init Group Manager in Any Way
+                
+                dmMTGD = Init(dmMTGD,Par);
+                dmMTGD = LoadData(dmMTGD);
+                
+
+            case 10 %  Init Group Manager
+                
+                % if nitialized before : save data load
+               buttonName                  = questdlg('Would you like to reload the data');  
+               if strcmp(buttonName,'Yes')  
+                    dmMTGD = Init(dmMTGD,Par);
+                    dmMTGD = LoadData(dmMTGD);
+               end
+                
+
+
+            case 11 %  Active Rois per Event
                 
                 fMultipleGroups(0, 0, 10); % init if required
-                                
-                % select Events to Show
-                eventNames = gdm.MngrData.UniqueEventNames;
-                [s,ok] = listdlg('PromptString','Select Event :','ListString',eventNames,'SelectionMode','single');
-                if ~ok, return; end;
+                dmMTGD = ListMostActiveRoiPerEvent(dmMTGD);
                 
-                % do analysis
-                eventNamesSelected = eventNames(s);
-                gdm = ShowDelayMapPerEvent(gdm, eventNamesSelected);
+
+            case 12 %  Early/Late/OnTime Rois per Event
                 
+                fMultipleGroups(0, 0, 10); % init if required
+                dmMTGD = ListEarlyLateOntimeRoiPerEvent(dmMTGD);
+            
+            case 13 %  Show delay map for all trials per specific event
+                
+                fMultipleGroups(0, 0, 10); % init if required
+                dmMTGD = ShowDelayMapPerEvent(dmMTGD);
+                
+            case 14 %  Show delay map histograms for all trials per specific event
+                
+                fMultipleGroups(0, 0, 10); % init if required
+                dmMTGD = ShowHistMapPerEvent(dmMTGD,false);
+                
+            case 15 %  Show ordered delay map histograms for all trials per specific event
+                
+                fMultipleGroups(0, 0, 10); % init if required
+                dmMTGD = ShowHistMapPerEvent(dmMTGD,true);
+                
+            case 16 %  order matrix
+                
+                fMultipleGroups(0, 0, 10); % init if required
+                dmMTGD = ShowSpikeOrderMatrx(dmMTGD);
+               
+            case 17 %  order by trace - features - center of mass
+                
+                fMultipleGroups(0, 0, 10); % init if required
+                dmMTGD = ShowNeuronOrderByFeature(dmMTGD);
+               
+            case 18, %  order trace by delay of spikes
+                
+                fMultipleGroups(0, 0, 10); % init if required
+                dmMTGD = ShowNeuronOrderByDelay(dmMTGD);
+                
+            case 19, %  order by averaged trace - features - center of mass
+                
+                fMultipleGroups(0, 0, 10); % init if required
+                %dmMTGD = ShowAveragedTracesOrderByFeature(dmMTGD);
+                dmMTGD = ShowAveragedTracesAndEvents(dmMTGD);
+
+            case 20, %  averaged traces and events
+                
+                fMultipleGroups(0, 0, 10); % init if required
+                %dmMTGD = ShowAveragedTracesAndEvents(dmMTGD);
+                %dmMTGD = ShowAveragedTracesAndEventsHadas(dmMTGD);
+                dmMTGD = ShowAveragedTracesAndEventsShahar(dmMTGD);
+                
+ 
+            case 21, %  Pearson Correlation
+                
+                fMultipleGroups(0, 0, 10); % init if required
+                dmMTGD = ShowPearsonCorrelationdFF(dmMTGD);
+                
+            case 22, %  Perform and Show clustering
+                
+                fMultipleGroups(0, 0, 10); % init if required
+                dmMTGD = ShowClusters(dmMTGD);
+ 
                 
              otherwise
                 errordlg('Unsupported Option')
@@ -1818,60 +1980,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fMultipleGroups
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
-
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fTwoPhotonDetection (nested in main)
-% * *
-% * * Two Photon based Detection & Classification of events on dF/F data
-% * *
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-    function fTwoPhotonDetection(hObject, eventdata, selType)
-        %
-        %%%%%%%%%%%%%%%%%%%%%%
-        % Init
-        %%%%%%%%%%%%%%%%%%%%%%        
-        switch selType,
-            case 1,
-                % Init
-                warndlg('TBD : future option .');
-                
-            case 2,
-                % Do it
-                Par = TPA_MultiTrialScattering(Par);
-                
-
-            case 5, 
-            otherwise
-                errordlg('Detection of Time events on dF/F data is coming soon  ')
-        end;
-        
-        
-        
-        %%%%%%%%%%%%%%%%%%%%%%
-        % Do Averaging
-        %%%%%%%%%%%%%%%%%%%%%%
-        % Update figure components
-        fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
-        
-    end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fTwoPhotonDetection
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
-
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fManagElectroPhys (nested in main)
-% * *
-% * * shows and explore behavior image data along with events
-% * *
+% * * shows and explore electro phys data along with events
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fManagElectroPhys(hObject, eventdata, selType)
         
@@ -1882,27 +1993,27 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
             case 1, % select and load predefined trial
                 
                 % select GUI
-                [Par.DME,isOK] = fSelectTrial(Par.DME);            %vis4d(uint8(SData.imTwoPhoton));
+                [Par.DMB,isOK] = GuiSelectTrial(Par.DMB);            %vis4d(uint8(SData.imTwoPhoton));
                 if ~isOK,
                     DTP_ManageText([], 'Behavior : Trial Selection problems', 'E' ,0)   ;                  
                 end
                 
             case 11,
                 % determine data params
-                [Par.DME,isOK] = fSetDataParameters(Par.DME);
+                [Par.DMB,isOK] = GuiSetDataParameters(Par.DMB);
                 if ~isOK,
-                    DTP_ManageText([], 'Behavior : configuration parameters are not updated', 'W' ,0)   ;                  
+                    DTP_ManageText([], 'ElectroPhys : configuration parameters are not updated', 'W' ,0)   ;                  
                 end
                 
             case 2,
                 % Behavior
-                if Par.DME.VideoFrontFileNum < 1 && Par.DME.VideoSideFileNum < 1 ,
+                if Par.DMB.VideoFileNum < 1 ,
                     warndlg('Behavior is not selected or there are problems with directory. Please select Trial and load the data after that.');
                     return
                 end;
-                [Par.DME, SData.imBehaive]      = Par.DMB.LoadBehaviorData(Par.DME.Trial,'all');
-                DTP_ManageText([], 'Behavior : Two file load Completed.', 'I' ,0)   ;
-                [Par.DME, strEvent]             = Par.DMB.LoadAnalysisData(Par.DME.Trial,'strEvent');
+                Par.DMB                         = Par.DMB.LoadElectroPhysData(Par.DMB.Trial);
+                Par.DMB                         = ShowRecordData(Par.DMB, 151);
+                [Par.DMB, strEvent]             = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
                 % this code helps with sequential processing of the ROIs: use old one in the new image
                 if length(strEvent) > 0 && length(SData.strEvent) > 0,
                     buttonName                  = questdlg('Would you like to use Event data from previous trial?');  
@@ -1930,12 +2041,12 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
 %                     warndlg('Need to load behavior data first.');
 %                     return
 %                 end;
-                [Par] = TPA_ElectroPhysEditorYT(Par);
- 
+                %[Par] = TPA_ElectroPhysEditorYT(Par);
+                Par.DMB                         = ShowRecordData(Par.DMB, 151);
                 
            case 5,
                 % edit YT
-                if ( Par.DME.VideoFrontFileNum < 1 && Par.DME.VideoSideFileNum < 1 ) || isempty(SData.imBehaive),
+                if ( Par.DMB.VideoFileNum < 1 ) ,
                     warndlg('Need to load behavior data first.');
                     return
                 end;
@@ -1945,33 +2056,31 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 end;
                     
                 % start save
-                Par.DME     = Par.DME.SaveAnalysisData(Par.DME.Trial,'strEvent',SData.strEvent);
+                Par.DMB     = Par.DMB.SaveAnalysisData(Par.DMB.Trial,'strEvent',SData.strEvent);
 
                 
            case 6,
                 % Next Trial Full load
                 
-                % close previous
-                hFigLU = findobj('Name','4D : Behavior Time Editor');    
-                if ~isempty(hFigLU), close(hFigLU); end;
-                hFigRU = findobj('Name','4D : Behavior Image Editor');    
-                if ~isempty(hFigRU), close(hFigRU); end;
+%                 % close previous
+%                 hFigLU = findobj('Name','4D : Behavior Time Editor');    
+%                 if ~isempty(hFigLU), close(hFigLU); end;
+%                 hFigRU = findobj('Name','4D : Behavior Image Editor');    
+%                 if ~isempty(hFigRU), close(hFigRU); end;
                 
                 % set new trial
                 trialInd            = Par.DMB.Trial + 1;
-                [Par.DME,isOK]      = Par.DMB.SetTrial(trialInd);
+                [Par.DMB,isOK]      = Par.DMB.SetTrial(trialInd);
                 
                 % load Image, Events
                 fManagElectroPhys(0, 0, 2);
 
                 % Preview
-                fManagElectroPhys(0, 0, 3);
+                %fManagElectroPhys(0, 0, 3);
                 fManagElectroPhys(0, 0, 4);
                 
                 % Arrange
-                fArrangeFigures();
-  
-                
+                %fArrangeFigures();
                 
             otherwise
                 errordlg('Unsupported Type')
@@ -1981,17 +2090,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fManagElectroPhys
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fManageCalcium (nested in main)
-% * *
 % * * Configures and loads Calcium image and data
-% * *
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fManageCalcium(hObject, eventdata, selType)
         
@@ -2005,7 +2106,7 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                                 
                 dirName            = Par.DMT.VideoDir;
                 % init DMC
-                Par.DataRange      = [0 60000];         % data range for display images
+                Par.Roi.DataRange  = [0 60000];         % data range for display images
                 Par.DMC            = Par.DMC.SelectAllData(dirName);
                 Par.DMC            = Par.DMC.CheckData();
 
@@ -2066,17 +2167,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fManageCalcium
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fViewResults (nested in main)
-% * *
 % * * shows ROI analysis results
-% * *
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fViewResults(hObject, eventdata, selType)
         % help with different functions
@@ -2105,16 +2198,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fViewResults
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fImportResults (nested in main)
-% * *
-% * * Import ROI analysis results
-% * *
+% * * Import analysis results
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fImportResults(hObject, eventdata, selType)
         % Import data primarly from JAABA
@@ -2125,20 +2211,12 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         %%%%%%%%%%%%%%%%%%%%%%
         switch selType,
             
-               
-            
-            case 1, % import Jabba - select one directory
+            case 1, % import Jabba predicted scores - select one directory
                 
                 % check if experiment is specified
                 if isempty(Par.DMB.EventDir),
                     warndlg('Please specify experiment directory first. File > Experiment > New or Load '); 
                     return
-                end
-                
-                % Ask about event data
-                if Par.DMB.EventFileNum > 0,
-                buttonName = questdlg('All the previous Behaivioral Event data will be lost.', 'Warning');
-                if ~strcmp(buttonName,'Yes'), return; end;
                 end
                 
                 
@@ -2148,7 +2226,6 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 Par.DMJ.JaabaDir     = dirName; % info Jaaba
                 
                 fImportResults(0, 0, 12);
-                
                 
             case {2,3}, % import Jabba Excel - select one directory - auto or manualy
                 
@@ -2165,7 +2242,7 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 end
                 
                 % load excel
-                [fileName,dirName]              = uigetfile(SSave.ExpDir,'Jaaba Excel File');
+                [fileName,dirName]              = uigetfile(dmSession.ExpDir,'Jaaba Excel File');
                 if isnumeric(dirName), return; end;  % cancel button
                 
                 
@@ -2194,51 +2271,96 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                     end
                 end
                 
-%             case 11, % new SW version  - load movie_comb.avi from directories 
-%                 % save
-%                 fManageJaneliaExperiment(0,0,3);  
-%                 
-%                 %dirName             = uigetdir(SSave.ExpDir,'Jaaba Data Directory');
-%                 dirName             = uigetdir(SSave.ExpDir,'Select any directory that belongs to Experiment (i.e. ..Analysis\m76\1-10-14)');
-%                 if isnumeric(dirName), return; end;  % cancel button  
-%                 
-%                 % determine the path - assume certain directory structure
-%                 Par                = TPA_ParInit;         
-%   
-%                 % init Behave and Two Photon
-%                 SData               = struct('imBehaive',[],'imTwoPhoton',[],'strROI',[],'strEvent',[],'strManager',struct('roiCount',0,'eventCount',0)); % strManager will manage counters
-%                 
-%                 % import JAABA - event from scores and movies from movie_comb.avi
-%                 SSave.ExpDir        = dirName;  % path this info for Jaaba
-%                 fImportResults(0, 0, 11);
-%                 
-%                 
-%                 Par.DMT             = Par.DMT.SelectAllData(dirName);
-%                 Par.DMB             = Par.DMB.SelectAllData(dirName,'comb');
-%                 % check
-%                 Par.DMT             = Par.DMT.CheckData();
-%                 Par.DMB             = Par.DMB.CheckData();
-%                 
-%                  
-%                 expFileName         = fullfile(Par.DMB.EventDir,Par.ExpFileName);                
-%                 SSave.ExpDir        = dirName;
-%                 SSave.StrEventClass = []; % new classifier
-%                 try 
-%                     save(expFileName,'-struct', 'SSave');
-%                     DTP_ManageText([], sprintf('Experiment : New configuration is done. '), 'I' ,0)   ;                    
-%                  catch
-%                     DTP_ManageText([], sprintf('Experiment : Can not save file %s',expFileName), 'E' ,0)   ;             
-%                 end
-%                 
+            case 4, % import Jabba manual scores - select one directory with jab files
+                
+                % check if experiment is specified
+                if isempty(Par.DMB.EventDir),
+                    warndlg('Please specify experiment directory first. File > Experiment > New or Load '); 
+                    return
+                end
+                
+                % Ask about event data
+                if Par.DMB.EventFileNum > 0,
+                buttonName = questdlg('All the previous Behaivioral Event data will be lost.', 'Warning');
+                if ~strcmp(buttonName,'Yes'), return; end;
+                end
                 
                 
-            case 12, % import Jabba - select one directory
+                [csFilenames, sPath] = uigetfile({   '*.jab', 'jab Files'; '*.*', 'All Files'}, 'Select jab File ',...
+                    'OpenLocation'  , Par.DMJ.EventDir, ...
+                    'Multiselect'   , 'off');
+                
+                if isnumeric(sPath), return, end;   % Dialog aborted
+                
+                % if single file selected
+                if iscell(csFilenames), csFilenames = csFilenames{1}; end;
+                
+                Par.DMJ.EventDir     = sPath; % info Jaaba
+                Par.DMJ.JabFileName  = csFilenames;
                 
                 
-                dirName                             = Par.DMJ.JaabaDir ;
+                fImportResults(0, 0, 13);
+                
+            case 12, % import Jabba - select one directory from scores files
+                
+                % Ask about event data
+                doMerge = false;
+                if Par.DMB.EventFileNum > 0,
+                buttonName = questdlg('Previous Behaivioral Event data is found. Would you like?', 'Warning','Cancel','Merge','Overwrite','Cancel');
+                if strcmp(buttonName,'Cancel'), return; end;
+                % check if merge is required
+                doMerge = strcmp(buttonName,'Merge');
+                end
+                
                 
                 % determine the path - assume certain directory structure
+                dirName                             = Par.DMJ.JaabaDir ;
                 Par.DMJ                             = Par.DMJ.SelectJaabaData(dirName);
+
+                % Jaaba
+                if Par.DMJ.JaabaDirNum < 1 ,
+                    warndlg('Jaaba info is not found. You will need to mark behavioral event differently.');
+                    return
+                end
+                % where to put data back
+                eventDirName                        = Par.DMB.EventDir;
+                
+                
+                 % init Behavior directories
+                 %Par.DMB                             = Par.DMB.Clean();
+                 %Par.DMB                            = Par.DMB.SelectAllData(dirName,'comb');
+                 Par.DMB                            = Par.DMB.SelectBehaviorData(dirName,'comb');
+                 %Par.DMB                            = Par.DMB.RemoveEventData();
+                 Par.DMB                            = Par.DMB.SelectAnalysisData(eventDirName) ; % event directory is different              
+                 Par.DMB                            = Par.DMB.CheckData();
+                 
+                 % assign offsets for the data import : using behavioral inputs
+                 Par.DMJ.Offset                     = Par.DMB.Offset;
+
+                for trialInd = 1:Par.DMJ.JaabaDirNum
+                    [Par.DMJ, jabData]              = Par.DMJ.LoadJaabaData(trialInd);
+                    [Par.DMJ, jabEvent]             = Par.DMJ.ConvertToAnalysis(jabData);
+                    
+                    % assign and save
+                    if doMerge
+                        % select and load
+                        [Par.DMB,isOK]                  = Par.DMB.SetTrial(trialInd);
+                        assert(isOK,sprintf('Something wrong with data load in trial %d',trialInd))
+                        [Par.DMB,SData.strEvent]        = Par.DMB.LoadAnalysisData(Par.DMB.Trial,'strEvent');
+                        SData.strEvent                  = cat(1,SData.strEvent(:),jabEvent(:));
+                    else
+                        SData.strEvent                  = jabEvent;
+                    end
+                    Par.DMB                         = Par.DMB.SetTrial(trialInd);
+                    Par.DMB                         = Par.DMB.SaveAnalysisData(trialInd,'strEvent',SData.strEvent);
+                end
+
+            case 13, % import Jabba events from jab file - manual data
+
+                pathFileName                        = fullfile(Par.DMJ.EventDir,Par.DMJ.JabFileName) ;
+                
+                % determine the path - assume certain directory structure
+                Par.DMJ                             = Par.DMJ.LoadJabFile(pathFileName);
 
                 % Jaaba
                 if Par.DMJ.JaabaDirNum < 1 ,
@@ -2250,16 +2372,13 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                 
                 
 %                 % init Behavior directories
-                 %Par.DMB                             = Par.DMB.Clean();
-                 %Par.DMB                            = Par.DMB.SelectAllData(dirName,'comb');
-                 Par.DMB                            = Par.DMB.SelectBehaviorData(dirName,'comb');
-                 Par.DMB                            = Par.DMB.RemoveEventData();
+                 %Par.DMB                            = Par.DMB.RemoveEventData();
                  Par.DMB                            = Par.DMB.SelectAnalysisData(eventDirName) ; % event directory is different              
                  Par.DMB                            = Par.DMB.CheckData();
 
 
                 for trialInd = 1:Par.DMJ.JaabaDirNum,
-                    [Par.DMJ, jabData]              = Par.DMJ.LoadJaabaData(trialInd);
+                    [Par.DMJ, jabData]              = Par.DMJ.GetJabFileData(trialInd);
                     [Par.DMJ, jabEvent]             = Par.DMJ.ConvertToAnalysis(jabData);
                     
                     % assign and save
@@ -2268,31 +2387,110 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
                     Par.DMB                         = Par.DMB.SaveAnalysisData(trialInd,'strEvent',SData.strEvent);
                 end
                 
-
+            case 21 % Import Prarie Piezo Events
+                
+                % check if experiment is specified
+                if isempty(Par.DMB.EventDir)
+                    warndlg('Please specify experiment directory first. File > Experiment > New or Load '); 
+                    return
+                end
+                
+                % Ask about event data
+                if Par.DMB.EventFileNum > 0
+                buttonName = questdlg('All the previous Behaivioral Event data will be lost.', 'Warning');
+                if ~strcmp(buttonName,'Yes'), return; end;
+                end
+                
+                % TwoPhoton
+                if Par.DMT.VideoFileNum < 1
+                    warndlg('Two Photon data is not selected or there are problems with load. Please select Trial and load the data after that.');
+                    return
+                end
+                dirName         = Par.DMT.VideoDir;
+                
+                Par.DMB         = ImportEventsLiora(Par.DMB,dirName);
+                
+            case 22 % Import Prarie Electro Phys Events
+                
+                % check if experiment is specified
+                if isempty(Par.DMB.EventDir)
+                    warndlg('Please specify experiment directory first. File > Experiment > New or Load '); 
+                    return
+                end
+                
+                % Ask about event data
+                if Par.DMB.EventFileNum > 0
+                buttonName = questdlg('All the previous Behaivioral Event data will be lost.', 'Warning');
+                if ~strcmp(buttonName,'Yes'), return; end;
+                end
+                
+                % TwoPhoton
+                if Par.DMT.VideoFileNum < 1,
+                    warndlg('Two Photon data is not selected or there are problems with load. Please select Trial and load the data after that.');
+                    return
+                end
+                dirName         = Par.DMT.VideoDir;
+                Par.DMB         = ImportEventsElectroPhys(Par.DMB,dirName);
+                
+          case 23 % Import Behavioral Lever press events
+                
+                % check if experiment is specified
+                if isempty(Par.DMB.EventDir)
+                    warndlg('Please specify experiment directory first. File > Experiment > New or Load '); 
+                    return
+                end
+                
+%                 % Ask about event data
+%                 if Par.DMB.EventFileNum > 0
+%                 buttonName = questdlg('All the previous Behaivioral Event data will be lost.', 'Warning');
+%                 if ~strcmp(buttonName,'Yes'), return; end
+%                 end
+                
+                % Behavioral data
+                if Par.DMB.VideoFrontFileNum < 1
+                    warndlg('Behavioral video data is not selected or there are problems with load. Please select Trial and load the data after that.');
+                    return
+                end
+                dirName         = Par.DMB.VideoDir;
+                Par.DMB         = ImportLeverPressData(Par.DMB,dirName);
+               
+                
+          case 24 % Import Behavioral events from Vdieo Labeler
+                
+                % check if experiment is specified
+                if isempty(Par.DMB.EventDir)
+                    warndlg('Please specify experiment directory first. File > Experiment > New or Load '); 
+                    return
+                end
+                
+%                 % Ask about event data
+%                 if Par.DMB.EventFileNum > 0
+%                 buttonName = questdlg('All the previous Behaivioral Event data will be lost.', 'Warning');
+%                 if ~strcmp(buttonName,'Yes'), return; end
+%                 end
+                
+                % Behavioral data
+                if Par.DMB.VideoFrontFileNum < 1
+                    warndlg('Behavioral video data is not selected or there are problems with load. Please select Trial and load the data after that.');
+                    return
+                end
+                dirName         = Par.DMB.VideoDir;
+                Par.DMB         = ImportVideoLabelerROI(Par.DMB); %,dirName);
                  
              otherwise
                 errordlg('Unsupported Import Case')
-        end;
+        end
         
         % Update figure components
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fImportResults
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * *
-% * * NESTED FUNCTION fExportResults (nested in main)
-% * *
-% * * exports ROI analysis results
-% * *
+% * * exports analysis results
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fExportResults(hObject, eventdata, selType)
         %
-        
-        
         %%%%%%%%%%%%%%%%%%%%%%
         % Do Export
         %%%%%%%%%%%%%%%%%%%%%%
@@ -2319,27 +2517,24 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fExportResults
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * NESTED FUNCTION fSetupGUI (nested in Main)
-% * *
 % * * Init all the buttons
-% * *
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fSetupGUI() %#ok<*INUSD> eventdata is trialedly unused
         
+        % all the figures are black
+        %colordef('none');
+        
         S.hFig = figure('units','pixels',...
-            'position',[200 250 650 30],...
+            'position',[200 250 750 30],...
             'menubar','none',...
             'name', sprintf('Two Photon Analysis : %s',currVers),...
             'numbertitle','off',...
             'resize','off',...
             'closerequestfcn',{@fCloseGUI}); %{@fh_crfcn});
         
+        % -------------------------------------------------------------------------------------------------------        
         S.hMenuFile(1)          = uimenu(S.hFig,                'Label','File...');
         S.hMenuSession(1)       = uimenu(S.hMenuFile(1),        'Label','Session ...'                                                        );
         S.hMenuSession(2)       = uimenu(S.hMenuSession(1),     'Label','Load Session',                             'Callback',{@fManageSession,1});
@@ -2348,28 +2543,27 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         S.hMenuSession(5)       = uimenu(S.hMenuSession(1),     'Label','Save Session As...',                       'Callback',{@fManageSession,4});
         S.hMenuSession(6)       = uimenu(S.hMenuSession(1),     'Label','Clear Session',                            'Callback',{@fManageSession,5});
         
-        S.hMenuExpBehaive(1)    = uimenu(S.hMenuFile(1),        'Label','Experiment Behavior...', 'separator','on'                                              );
-        S.hMenuExpBehaive(2)    = uimenu(S.hMenuExpBehaive(1),  'Label','Setup New ...',                            'Callback',{@fManageJaneliaExperiment,1});
-        S.hMenuExpBehaive(3)    = uimenu(S.hMenuExpBehaive(1),  'Label','Load from Data Management File...',        'Callback',{@fManageJaneliaExperiment,2});
-        S.hMenuExpBehaive(4)    = uimenu(S.hMenuExpBehaive(1),  'Label','Refresh Data Management File...',          'Callback',{@fManageJaneliaExperiment,4});
-        S.hMenuExpBehaive(5)    = uimenu(S.hMenuExpBehaive(1),  'Label','Save Data Management File ...',            'Callback',{@fManageJaneliaExperiment,7});
-        S.hMenuExpBehaive(6)    = uimenu(S.hMenuExpBehaive(1),  'Label','Preview Data Management File...',          'Callback',{@fManageJaneliaExperiment,6});
-        S.hMenuExpBehaive(7)    = uimenu(S.hMenuExpBehaive(1),  'Label','Select Directory (Old Style)...',          'Callback',{@fManageJaneliaExperiment,8}, 'separator','on');
-        S.hMenuExpBehaive(8)    = uimenu(S.hMenuExpBehaive(1),  'Label','Check Data Structure ...',                 'Callback',{@fManageJaneliaExperiment,5});
-        
-        S.hMenuExpElectro(1)    = uimenu(S.hMenuFile(1),        'Label','Experiment Electro Phys...','separator','on'                                            );
-        S.hMenuExpElectro(2)    = uimenu(S.hMenuExpElectro(1),  'Label','Select Directory...',                      'Callback',{@fManageElectroPhysExperiment,2});
-        S.hMenuExpElectro(3)    = uimenu(S.hMenuExpElectro(1),  'Label','New/Clear ...',                            'Callback',{@fManageElectroPhysExperiment,1});
-        S.hMenuExpElectro(4)    = uimenu(S.hMenuExpElectro(1),  'Label','Save ...',                                 'Callback',{@fManageElectroPhysExperiment,3});
-        S.hMenuExpElectro(5)    = uimenu(S.hMenuExpElectro(1),  'Label','Check Data Sync ...', 'separator','on',    'Callback',{@fManageElectroPhysExperiment,4});
-        
-        S.hMenuFile(3)          = uimenu(S.hMenuFile(1),        'Label','Close Windows',        'separator','on',   'Callback',@fCloseFigures);
-        S.hMenuFile(4)          = uimenu(S.hMenuFile(1),        'Label','Arrange Windows',                          'Callback',@fArrangeFigures);
+        S.hMenuExperiment(1)    = uimenu(S.hMenuFile(1) ,       'Label','Experiment ...', 'separator','on'                                           );
+        S.hMenuExperiment(2)    = uimenu(S.hMenuExperiment(1),  'Label','Select System ...',                        'Callback',{@fManageExperiment,1});
+        S.hMenuExperiment(3)    = uimenu(S.hMenuExperiment(1),  'Label','Load Organized Directory ...',             'Callback',{@fManageExperiment,2}, 'enable','on');
+        S.hMenuExperiment(4)    = uimenu(S.hMenuExperiment(1),  'Label','Load from Management File ...',            'Callback',{@fManageExperiment,3}, 'enable','on');
+        S.hMenuExperiment(5)    = uimenu(S.hMenuExperiment(1),  'Label','Setup New Experiment...',                  'Callback',{@fManageExperiment,4}, 'separator','on');
+        S.hMenuExperiment(6)    = uimenu(S.hMenuExperiment(1),  'Label','Refresh Data Management File...',          'Callback',{@fManageExperiment,5});
+        S.hMenuExperiment(7)    = uimenu(S.hMenuExperiment(1),  'Label','Save Data Management File ...',            'Callback',{@fManageExperiment,6});
+        S.hMenuExperiment(8)    = uimenu(S.hMenuExperiment(1),  'Label','Preview Data Management File...',          'Callback',{@fManageExperiment,7});
+        S.hMenuExperiment(9)    = uimenu(S.hMenuExperiment(1),  'Label','Load Last Experiment ...',                 'Callback',{@fManageExperiment,8},'separator','on');
+        S.hMenuExperiment(10)   = uimenu(S.hMenuExperiment(1),  'Label','Save Last Experiment ...',                 'Callback',{@fManageExperiment,9},'separator','off');
+        S.hMenuExperiment(11)   = uimenu(S.hMenuExperiment(1),  'Label','Check Data Structure ...',                 'Callback',{@fManageExperiment,15},'separator','off');
+                
         
         S.hMenuImport(1)        = uimenu(S.hMenuFile(1),        'Label','Import ...', 'separator','on'                                              );
-        S.hMenuImport(2)        = uimenu(S.hMenuImport(1),      'Label','Jaaba Score Data ...',                     'Callback',{@fImportResults,1});
-        S.hMenuImport(3)        = uimenu(S.hMenuImport(1),      'Label','Jaaba Excel Data Old...',                  'Callback',{@fImportResults,2});
-        S.hMenuImport(4)        = uimenu(S.hMenuImport(1),      'Label','Jaaba Excel Data Semi Auto ...',           'Callback',{@fImportResults,3});
+        S.hMenuImport(2)        = uimenu(S.hMenuImport(1),      'Label','Jaaba Predicted Score Data ...',           'Callback',{@fImportResults,1});
+        S.hMenuImport(3)        = uimenu(S.hMenuImport(1),      'Label','Jaaba Manual Score  Data ...',             'Callback',{@fImportResults,4});
+        S.hMenuImport(4)        = uimenu(S.hMenuImport(1),      'Label','Jaaba Excel Data Semi Auto ...',           'Callback',{@fImportResults,3},  'Enable','off');
+        S.hMenuImport(5)        = uimenu(S.hMenuImport(1),      'Label','Prarie Piezo Stimulus Events...',          'Callback',{@fImportResults,21}, 'Enable','off');
+        S.hMenuImport(6)        = uimenu(S.hMenuImport(1),      'Label','Prarie Electro Phys as Events...',         'Callback',{@fImportResults,22}, 'Enable','on');
+        S.hMenuImport(7)        = uimenu(S.hMenuImport(1),      'Label','Lever Press Events...',                    'Callback',{@fImportResults,23});
+        S.hMenuImport(8)        = uimenu(S.hMenuImport(1),      'Label','Video Labeler ROIs...',                    'Callback',{@fImportResults,24});
         S.hMenuExport(1)        = uimenu(S.hMenuFile(1),        'Label','Export...');
         S.hMenuExport(2)        = uimenu(S.hMenuExport(1),      'Label','ImageJ ...',                               'Callback','warndlg(''Countdown is initiated'')');
         S.hMenuExport(3)        = uimenu(S.hMenuExport(1),      'Label','Matlab ...',                               'Callback','warndlg(''Is yet to come'')');
@@ -2377,8 +2571,13 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         S.hMenuExport(5)        = uimenu(S.hMenuExport(1),      'Label','Igor ...',                                 'Callback',{@fExportResults,4});
         S.hMenuExport(6)        = uimenu(S.hMenuExport(1),      'Label','Jabba ...',                                'Callback','warndlg(''Is yet to come'')');
         S.hMenuExport(7)        = uimenu(S.hMenuExport(1),      'Label','TwoPhoton Image Data to TIF file ...',     'Callback',{@fExportResults,5});
+       
+        
+        S.hMenuFile(3)          = uimenu(S.hMenuFile(1),        'Label','Close Windows',        'separator','on',   'Callback',@fCloseFigures);
+        S.hMenuFile(4)          = uimenu(S.hMenuFile(1),        'Label','Arrange Windows',                          'Callback',@fArrangeFigures);        
         S.hMenuFile(5)          = uimenu(S.hMenuFile(1),        'Label','Save All & Exit',   'separator','on',      'Callback',@fCloseGUI);
         
+        % -------------------------------------------------------------------------------------------------------        
         S.hMenuBehaive(1)       = uimenu(S.hFig,                'Label','Behavior...');
         S.hMenuBehaive(2)       = uimenu(S.hMenuBehaive(1),     'Label','Set Trial Num...',                         'Callback',{@fManageBehavior,1});
         S.hMenuBehaive(3)       = uimenu(S.hMenuBehaive(1),     'Label','Config Data...',                           'Callback',{@fManageBehavior,11});
@@ -2388,12 +2587,15 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         S.hMenuBehaive(7)       = uimenu(S.hMenuBehaive(1),     'Label','Next Trial Load and Show...',              'Callback',{@fManageBehavior,6});
         S.hMenuBehaive(8)       = uimenu(S.hMenuBehaive(1),     'Label','Compress Video Data...',                   'Callback',{@fManageBehavior,21});
         S.hMenuBehaive(9)       = uimenu(S.hMenuBehaive(1),     'Label','Check Drop Frames in Video Data...',       'Callback',{@fManageBehavior,22});
+        S.hMenuBehaive(10)      = uimenu(S.hMenuBehaive(1),     'Label','Overlay Two Photon ROIs...',               'Callback',{@fManageBehavior,31});
+        %S.hMenuBehaive(10)       = uimenu(S.hMenuBehaive(1),     'Label','Event Analysis...',                       'Callback',{@fManageBehavior,41});
        
-        S.hMenuEventsBD(1)      = uimenu(S.hMenuBehaive(1),     'Label','Events...');
+        S.hMenuEventsBD(1)      = uimenu(S.hMenuBehaive(1),     'Label','Events...', 'separator','on');
         S.hMenuEventsBD(2)      = uimenu(S.hMenuEventsBD(1),    'Label','Load from File...',                        'Callback',{@fManageEvent,1});
         S.hMenuEventsBD(3)      = uimenu(S.hMenuEventsBD(1),    'Label','New/Clean  ...',                           'Callback',{@fManageEvent,2});
         S.hMenuEventsBD(4)      = uimenu(S.hMenuEventsBD(1),    'Label','Save ...',                                 'Callback',{@fManageEvent,3});
         S.hMenuEventsBD(5)      = uimenu(S.hMenuEventsBD(1),    'Label','Load...',                                  'Callback',{@fManageEvent,4});
+        S.hMenuEventsBD(6)       = uimenu(S.hMenuEventsBD(1),   'Label','Analysis...',                              'Callback',{@fManageBehavior,41});
         %S.hMenuEvents(6)        = uimenu(S.hMenuEvents(1),      'Label','View All...',                              'Callback',{@fManageEvent,5});
         %S.hMenuEvents(7)        = uimenu(S.hMenuEvents(1),      'Label','Auto Detect...',                           'Callback','warndlg(''Is yet to come'')');
         %S.hMenuBehaive(8)       = uimenu(S.hMenuBehaive(1),     'Label','Save Event Results',  'separator','on',    'Callback',{@fManageBehavior,5});
@@ -2405,14 +2607,27 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         S.hMenuClass(6)         = uimenu(S.hMenuClass(1),       'Label','Train on all Previous Trials...',          'Callback',{@fManageEvent,15});
         S.hMenuClass(7)         = uimenu(S.hMenuClass(1),       'Label','Classify Current Trial...',                'Callback',{@fManageEvent,16});
 
-        S.hMenuTrajec(1)        = uimenu(S.hMenuBehaive(1),      'Label','Trajectory Analysis...',  'separator','on'   );
+        S.hMenuTrajec(1)        = uimenu(S.hMenuBehaive(1),      'Label','Trajectory Analysis...',  'separator','off'   );
         S.hMenuTrajec(2)        = uimenu(S.hMenuTrajec(1),       'Label','Params ...',                               'Callback',{@fManageEvent,20});
-        S.hMenuTrajec(3)        = uimenu(S.hMenuTrajec(1),       'Label','Create ...',                               'Callback',{@fManageEvent,21});
-        S.hMenuTrajec(4)        = uimenu(S.hMenuTrajec(1),       'Label','Show Filtered ...',                        'Callback',{@fManageEvent,22});
-        S.hMenuTrajec(5)        = uimenu(S.hMenuTrajec(1),       'Label','Group  ...',                               'Callback',{@fManageEvent,23});
-        S.hMenuTrajec(6)        = uimenu(S.hMenuTrajec(1),       'Label','Save  ...',                                'Callback',{@fManageEvent,24});
+        S.hMenuTrajec(3)        = uimenu(S.hMenuTrajec(1),       'Label','Define Bounds using ROIs ...',             'Callback',{@fManageEvent,26});
+        S.hMenuTrajec(4)        = uimenu(S.hMenuTrajec(1),       'Label','Create ...',                               'Callback',{@fManageEvent,21});
+        S.hMenuTrajec(5)        = uimenu(S.hMenuTrajec(1),       'Label','Show Filtered ...',                        'Callback',{@fManageEvent,22});
+        S.hMenuTrajec(6)        = uimenu(S.hMenuTrajec(1),       'Label','Show Average  ...',                        'Callback',{@fManageEvent,23});
+        S.hMenuTrajec(7)        = uimenu(S.hMenuTrajec(1),       'Label','Show Volume  ...',                         'Callback',{@fManageEvent,24});
+        S.hMenuTrajec(8)        = uimenu(S.hMenuTrajec(1),       'Label','Save Aver. Trajectory as Event  ...',      'Callback',{@fManageEvent,25});
+        S.hMenuTrajec(9)        = uimenu(S.hMenuTrajec(1),       'Label','Manual Trajectory Labeler  ...',           'Callback',{@fManageEvent,31},  'separator','on'   );
+        S.hMenuTrajec(10)       = uimenu(S.hMenuTrajec(1),       'Label','Save Labeler data as Events  ...',         'Callback',{@fManageEvent,32});
         
+        % -------------------------------------------------------------------------------------------------------
+        S.hMenuElectroPhys(1)   = uimenu(S.hFig,                'Label','ElectroPhys...');
+        S.hMenuElectroPhys(2)   = uimenu(S.hMenuElectroPhys(1), 'Label','Set Trial Num...',                         'Callback',{@fManagElectroPhys,1});
+        S.hMenuElectroPhys(3)   = uimenu(S.hMenuElectroPhys(1), 'Label','Config Data...',                           'Callback',{@fManagElectroPhys,11});
+        S.hMenuElectroPhys(4)   = uimenu(S.hMenuElectroPhys(1), 'Label','Load Trial Data...',                       'Callback',{@fManagElectroPhys,2});
+        S.hMenuElectroPhys(5)   = uimenu(S.hMenuElectroPhys(1), 'Label','View XY...',                               'Callback',{@fManagElectroPhys,3},'Enable','off');
+        S.hMenuElectroPhys(6)   = uimenu(S.hMenuElectroPhys(1), 'Label','View YT...',                               'Callback',{@fManagElectroPhys,4});
+        S.hMenuElectroPhys(7)   = uimenu(S.hMenuElectroPhys(1), 'Label','Next Trial Load and Show...',              'Callback',{@fManagElectroPhys,6});
         
+        % -------------------------------------------------------------------------------------------------------
         S.hMenuImage(1)         = uimenu(S.hFig,                'Label','Two Photon...');
         S.hMenuImage(2)         = uimenu(S.hMenuImage(1),       'Label','Set Trial Num...',                         'Callback',{@fManageTwoPhoton,1});
         S.hMenuImage(3)         = uimenu(S.hMenuImage(1),       'Label','Config Data...',                           'Callback',{@fManageTwoPhoton,11});
@@ -2438,63 +2653,113 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         S.hMenuRoi(3)           = uimenu(S.hMenuRoi(1),         'Label','Clean/New  ...',                           'Callback',{@fManageROI,2});
         S.hMenuRoi(4)           = uimenu(S.hMenuRoi(1),         'Label','Save ...',                                 'Callback',{@fManageROI,3});
         S.hMenuRoi(5)           = uimenu(S.hMenuRoi(1),         'Label','Load Current...',                          'Callback',{@fManageROI,4});
-        %S.hMenuRoi(6)           = uimenu(S.hMenuRoi(1),         'Label','Auto Detect...',                           'Callback',{@fManageROI,5});
+        S.hMenuRoi(6)           = uimenu(S.hMenuRoi(1),         'Label','Load From File and Specific Z-Stack...',   'Callback',{@fManageROI,5});
+        %S.hMenuRoi(7)           = uimenu(S.hMenuRoi(1),         'Label','Manual Registration...',                   'Callback',{@fManageROI,21});
         
         S.hMenuAverage(1)       = uimenu(S.hMenuImage(1),       'Label','Analysis...');
         S.hMenuAverage(2)       = uimenu(S.hMenuAverage(1),     'Label','Aver Fluorescence Point ROIs ...',         'Callback',{@fAnalysisROI,1});
         S.hMenuAverage(3)       = uimenu(S.hMenuAverage(1),     'Label','Aver Fluorescence Line(Max) ROIs ...',     'Callback',{@fAnalysisROI,2});
         S.hMenuAverage(4)       = uimenu(S.hMenuAverage(1),     'Label','Aver Fluorescence Line(Orth) ROIs ...',    'Callback',{@fAnalysisROI,3});
         S.hMenuAverage(5)       = uimenu(S.hMenuAverage(1),     'Label','Aver Separately by ROI Type ...',          'Callback',{@fAnalysisROI,4});        
-        S.hMenuProcess(2)       = uimenu(S.hMenuAverage(1),     'Label','Remove Artifacts : Smooth Ch 1 ...',       'Callback',{@fArtifactsROI,1}, 'separator','on');
-        S.hMenuProcess(3)       = uimenu(S.hMenuAverage(1),     'Label','Remove Artifacts : Decorrelate ...',       'Callback',{@fArtifactsROI,2});
-        S.hMenuProcess(4)       = uimenu(S.hMenuAverage(1),     'Label','Remove Artifacts : Bleach & Motion ...',   'Callback',{@fArtifactsROI,3});        
+        S.hMenuProcess(2)       = uimenu(S.hMenuAverage(1),     'Label','Remove Artifacts : Slow Time ...',         'Callback',{@fArtifactsROI,2}, 'separator','on');
+        S.hMenuProcess(3)       = uimenu(S.hMenuAverage(1),     'Label','Remove Artifacts : Fast Time ...',         'Callback',{@fArtifactsROI,3});
+        S.hMenuProcess(4)       = uimenu(S.hMenuAverage(1),     'Label','Remove Artifacts : Polyfit 2 ...',         'Callback',{@fArtifactsROI,4});        
         S.hMenuProcess(5)       = uimenu(S.hMenuAverage(1),     'Label','dF/F : Fbl = Aver Fluorescence ...',       'Callback',{@fProcessROI,1},    'separator','on');
         S.hMenuProcess(6)       = uimenu(S.hMenuAverage(1),     'Label','dF/F : Fbl = 10% Min ...',                 'Callback',{@fProcessROI,2});
         S.hMenuProcess(7)       = uimenu(S.hMenuAverage(1),     'Label','dF/F : Fbl = STD ...',                     'Callback',{@fProcessROI,3});
         S.hMenuProcess(8)       = uimenu(S.hMenuAverage(1),     'Label','dF/F : Fbl = 10% Min Cont ...',            'Callback',{@fProcessROI,4});
+        S.hMenuProcess(9)       = uimenu(S.hMenuAverage(1),     'Label','dF/F : Fbl = 10% Min + Bias ...',          'Callback',{@fProcessROI,5});
+        S.hMenuProcess(10)      = uimenu(S.hMenuAverage(1),     'Label','dF/F : Fbl = 10% Max ...',                 'Callback',{@fProcessROI,6});
         
-        S.hMenuEventTP(1)       = uimenu(S.hMenuImage(1),       'Label','ROI Event Detector ...', 'separator','on' );
-        S.hMenuEventTP(2)       = uimenu(S.hMenuEventTP(1),     'Label','Event Auto Detect (dff-1,emph-4) ',        'Callback',{@fManageROI,11},    'separator','on');
-        S.hMenuEventTP(3)       = uimenu(S.hMenuEventTP(1),     'Label','Event Auto Detect (dff-1,emph-5) ',        'Callback',{@fManageROI,12});
-        S.hMenuEventTP(4)       = uimenu(S.hMenuEventTP(1),     'Label','Event Auto Detect (dff-1,emph-6) ',        'Callback',{@fManageROI,13});
-        S.hMenuEventTP(5)       = uimenu(S.hMenuEventTP(1),     'Label','Event Auto Detect (dff-4,emph-6) ',        'Callback',{@fManageROI,14});
-        S.hMenuEventTP(6)       = uimenu(S.hMenuEventTP(1),     'Label','Play Orig + Results ... ',                 'Callback',{@fManageROI,15});
-        S.hMenuEventTP(7)       = uimenu(S.hMenuEventTP(1),     'Label','Play dFF + Results ... ',                  'Callback',{@fManageROI,16});
-        S.hMenuEventTP(8)       = uimenu(S.hMenuEventTP(1),     'Label','Export to ROI ... ',                       'Callback',{@fManageROI,17});
+        S.hMenuDetectEvent(1)   = uimenu(S.hMenuImage(1),       'Label','dF/F Spike Detection...', 'separator','on' );
+        S.hMenuDetectEvent(2)   = uimenu(S.hMenuDetectEvent(1), 'Label','Configure ...',                             'Callback',{@fTwoPhotonDetection,1});
+        S.hMenuDetectEvent(2)   = uimenu(S.hMenuDetectEvent(1), 'Label','Detect Events on ROI data ...',             'Callback',{@fTwoPhotonDetection,2});
         
+        
+        S.hMenuEventTP(1)       = uimenu(S.hMenuImage(1),       'Label','ROI Auto Detector ...');
+        S.hMenuEventTP(2)       = uimenu(S.hMenuEventTP(1),     'Label','Configure ... ',                           'Callback',{@fManageROI,10});
+        S.hMenuEventTP(3)       = uimenu(S.hMenuEventTP(1),     'Label','Functional Fluorescence ',                 'Callback',{@fManageROI,11}, 'Enable','on');
+        S.hMenuEventTP(4)       = uimenu(S.hMenuEventTP(1),     'Label','Spatial Fluorescence ',                    'Callback',{@fManageROI,12});
+        S.hMenuEventTP(5)       = uimenu(S.hMenuEventTP(1),     'Label','Play Orig + Results ... ',                 'Callback',{@fManageROI,15},'Enable','off');
+        S.hMenuEventTP(6)       = uimenu(S.hMenuEventTP(1),     'Label','Show Results ... ',                        'Callback',{@fManageROI,16});
+        S.hMenuEventTP(7)       = uimenu(S.hMenuEventTP(1),     'Label','Import ROIs ... ',                         'Callback',{@fManageROI,17});
+        
+        
+        % -------------------------------------------------------------------------------------------------------
         S.hMenuMulti(1)          = uimenu(S.hFig,               'Label','Multi Trial...');
-        S.hMenuMulti(2)          = uimenu(S.hMenuMulti(1),      'Label','Batch TwoPhoton Registration for all Trials ... ', 'Callback',{@fMultipleTrials,1});
-        S.hMenuMulti(3)          = uimenu(S.hMenuMulti(1),      'Label','Batch ROI Assignment ... ',                        'Callback',{@fMultipleTrials,2});
-        S.hMenuMultiDFF(1)       = uimenu(S.hMenuMulti(1),      'Label','Batch dF/ ... '                        );
-        S.hMenuMultiDFF(2)       = uimenu(S.hMenuMultiDFF(1),   'Label','Batch dF/F all Trials : Fbl = Aver ... ',          'Callback',{@fMultipleTrials,13});
-        S.hMenuMultiDFF(3)       = uimenu(S.hMenuMultiDFF(1),   'Label','Batch dF/F all Trials : Fbl = 10% Min... ',        'Callback',{@fMultipleTrials,14});
-        S.hMenuMultiDFF(4)       = uimenu(S.hMenuMultiDFF(1),   'Label','Batch dF/F all Trials : Fbl = 10% Min Cont ... ',  'Callback',{@fMultipleTrials,15});
-        S.hMenuMulti(4)          = uimenu(S.hMenuMulti(1),      'Label','Preview all Trials .... ',                         'Callback',{@fMultipleTrials,4});
-        S.hMenuMulti(5)          = uimenu(S.hMenuMulti(1),      'Label','Multi Trial Explorer ...',                         'Callback',{@fMultipleTrials,5});
-        S.hMenuMulti(6)          = uimenu(S.hMenuMulti(1),      'Label','Multi Trial Explorer from JAABA Excel ...',        'Callback',{@fMultipleTrials,6});
-        S.hMenuMulti(7)         = uimenu(S.hMenuMulti(1),       'Label','Active Roi per Event Analysis...',                 'Callback',{@fMultipleGroups,11});
-        S.hMenuMulti(8)         = uimenu(S.hMenuMulti(1),       'Label','Early/Late Roi per Event Analysis...',             'Callback',{@fMultipleGroups,12});
-        S.hMenuMulti(9)          = uimenu(S.hMenuMulti(1),      'Label','dF/F Spike Delay Map for all ROIs     ...',        'Callback',{@fMultipleGroups,13});
-%         S.hMenuMulti(10)         = uimenu(S.hMenuMulti(1),      'Label','Export Data...',                           'Callback',{@fMultipleTrials,7});
-        S.hMenuDetect(1)         = uimenu(S.hMenuMulti(1),      'Label','Batch dF/F Event Detection...');
-        S.hMenuDetect(2)         = uimenu(S.hMenuDetect(1),     'Label','Configure ...',                                    'Callback',{@fTwoPhotonDetection,1});
-        S.hMenuDetect(2)         = uimenu(S.hMenuDetect(1),     'Label','Detect Events on ROI data ...',                    'Callback',{@fTwoPhotonDetection,2});
-        S.hMenuMulti(11)         = uimenu(S.hMenuMulti(1),      'Label','Batch Behavior Compress. ...', 'separator','on',   'Callback',{@fMultipleTrials,21});
-        S.hMenuMulti(12)         = uimenu(S.hMenuMulti(1),      'Label','Batch Event Assignment. ...',                      'Callback',{@fMultipleTrials,22});
-         
-        S.hMenuGroups(1)        = uimenu(S.hFig,                  'Label','Muti Experiment...');
-        S.hMenuGroups(2)        = uimenu(S.hMenuGroups(1),       'Label','Multi Group Explorer. .....',          'Callback',{@fMultipleGroups,1});
-        %S.hMenuGroups(3)        = uimenu(S.hMenuGroups(1),       'Label','Correlation Analysis...',                   'Callback',{@fMultipleGroups,2});
-       
-      
+        S.hMenuMulti(2)          = uimenu(S.hMenuMulti(1),      'Label','TwoPhoton Registration for all Trials ... ',       'Callback',{@fMultipleTrials,1});
+        S.hMenuMulti(3)          = uimenu(S.hMenuMulti(1),      'Label','ROI Assignment ... ',                              'Callback',{@fMultipleTrials,2});
+        S.hMenuMultiDFF(1)       = uimenu(S.hMenuMulti(1),      'Label','dF/F Computation... '                        );
+        S.hMenuMultiDFF(2)       = uimenu(S.hMenuMultiDFF(1),   'Label','dF/F  : Fbl = Aver ... ',                          'Callback',{@fMultipleTrials,13});
+        S.hMenuMultiDFF(3)       = uimenu(S.hMenuMultiDFF(1),   'Label','dF/F  : Fbl = 10% Min... ',                        'Callback',{@fMultipleTrials,14});
+        S.hMenuMultiDFF(4)       = uimenu(S.hMenuMultiDFF(1),   'Label','dF/F  : Fbl = 10% Min Cont ... ',                  'Callback',{@fMultipleTrials,15});
+        S.hMenuMultiDFF(5)       = uimenu(S.hMenuMultiDFF(1),   'Label','dF/F  : Fbl = 10% Min with Artifact = Slow ... ',  'Callback',{@fMultipleTrials,16}, 'separator','off');
+        S.hMenuMultiDFF(6)       = uimenu(S.hMenuMultiDFF(1),   'Label','dF/F  : Fbl = 10% Min + Bias ... ',                'Callback',{@fMultipleTrials,17}, 'separator','off');
+        S.hMenuMultiDFF(7)       = uimenu(S.hMenuMultiDFF(1),   'Label','dF/F  : Fbl = 10% Max ... ',                       'Callback',{@fMultipleTrials,18}, 'separator','off');
+        S.hMenuMultiDFF(8)       = uimenu(S.hMenuMultiDFF(1),   'Label','dF/F  : Fbl = 10% Min on All trials ... ',         'Callback',{@fMultipleTrials,19}, 'separator','off');
+        S.hMenuMulti(4)          = uimenu(S.hMenuMulti(1),      'Label','dF/F Preview for all Trials .... ',                'Callback',{@fMultipleTrials,4});
+        S.hMenuDetect(1)         = uimenu(S.hMenuMulti(1),      'Label','dF/F Spike Detection...');
+        S.hMenuDetect(2)         = uimenu(S.hMenuDetect(1),      'Label','Configure Filter ...',                            'Callback',{@fTwoPhotonDetection,3});
+        S.hMenuDetect(3)         = uimenu(S.hMenuDetect(1),      'Label','Detect and Show ...',                             'Callback',{@fTwoPhotonDetection,4});
+        S.hMenuDetect(4)         = uimenu(S.hMenuDetect(1),      'Label','Save Detect Results ...',                         'Callback',{@fTwoPhotonDetection,5});
+        S.hMenuDetect(5)         = uimenu(S.hMenuDetect(1),      'Label','Refresh Data ...',                                'Callback',{@fMultipleGroups,9});
+
+        S.hMenuRaw(1)            = uimenu(S.hMenuMulti(1),       'Label','Raw Data Analysis without ROI...'                );
+        S.hMenuRaw(2)            = uimenu(S.hMenuRaw(1),         'Label','Configuration ...',                               'Callback',{@fTwoPhotonDetection,6});
+        S.hMenuRaw(3)            = uimenu(S.hMenuRaw(1),         'Label','Analysis ...',                                    'Callback',{@fTwoPhotonDetection,7});
+        S.hMenuRaw(4)            = uimenu(S.hMenuRaw(1),         'Label','SVD ...',                                         'Callback',{@fTwoPhotonDetection,8});
+        S.hMenuRaw(5)            = uimenu(S.hMenuRaw(1),         'Label','Save new ROIs ...',                               'Callback',{@fTwoPhotonDetection,9});
         
-        S.hMenuElectroPhys(1)   = uimenu(S.hFig,                'Label','ElectroPhys...');
-        S.hMenuElectroPhys(2)   = uimenu(S.hMenuElectroPhys(1), 'Label','Set Trial Num...',                         'Callback',{@fManagElectroPhys,1});
-        S.hMenuElectroPhys(3)   = uimenu(S.hMenuElectroPhys(1), 'Label','Config Data...',                           'Callback',{@fManagElectroPhys,11});
-        S.hMenuElectroPhys(4)   = uimenu(S.hMenuElectroPhys(1), 'Label','Load Trial Data...',                       'Callback',{@fManagElectroPhys,2});
-        S.hMenuElectroPhys(5)   = uimenu(S.hMenuElectroPhys(1), 'Label','View XY...',                               'Callback',{@fManagElectroPhys,3},'Enable','off');
-        S.hMenuElectroPhys(6)   = uimenu(S.hMenuElectroPhys(1), 'Label','View YT...',                               'Callback',{@fManagElectroPhys,4});
-        S.hMenuElectroPhys(7)   = uimenu(S.hMenuElectroPhys(1), 'Label','Next Trial Load and Show...',              'Callback',{@fManagElectroPhys,6});
+        S.hMenuEventGal(1)      = uimenu(S.hMenuMulti(1),       'Label','Gals ROI Detector ...', 'separator','off');
+        S.hMenuEventGal(2)      = uimenu(S.hMenuEventGal(1),    'Label','Configure ... ',                                   'Callback',{@fManageROI,21});
+        S.hMenuEventGal(3)      = uimenu(S.hMenuEventGal(1),    'Label','Analysis ',                                        'Callback',{@fManageROI,22}, 'Enable','on');
+        S.hMenuEventGal(6)      = uimenu(S.hMenuEventGal(1),    'Label','Show Results ... ',                                'Callback',{@fManageROI,23}, 'Enable','off');
+        S.hMenuEventGal(7)      = uimenu(S.hMenuEventGal(1),    'Label','Import ROIs ... ',                                 'Callback',{@fManageROI,24});
+        
+        
+
+        S.hMenuMulti(5)          = uimenu(S.hMenuMulti(1),       'Label','Behavior Compress. ...', 'separator','on',        'Callback',{@fMultipleTrials,21});
+        S.hMenuMulti(6)          = uimenu(S.hMenuMulti(1),       'Label','Event Assignment. ...', 'separator','off',        'Callback',{@fMultipleTrials,22});
+        S.hMenuMultiEvent(1)     = uimenu(S.hMenuMulti(1),       'Label','Events ... '                        );
+        S.hMenuMultiEvent(2)     = uimenu(S.hMenuMultiEvent(1),  'Label','Event Removal ...',                               'Callback',{@fMultipleTrials,23});
+        S.hMenuMultiEvent(3)     = uimenu(S.hMenuMultiEvent(1),  'Label','Constant Event Create ...',                       'Callback',{@fMultipleTrials,25});
+        S.hMenuMultiEvent(4)     = uimenu(S.hMenuMultiEvent(1),  'Label','Average Processing ...',                          'Callback',{@fMultipleTrials,24});
+        S.hMenuMultiEvent(5)     = uimenu(S.hMenuMultiEvent(1),  'Label','Copy Event and Shift Trial Index ...',            'Callback',{@fMultipleTrials,27});
+        S.hMenuMultiEvent(7)     = uimenu(S.hMenuMultiEvent(1),  'Label','Event Preview for all Trials ...',                'Callback',{@fMultipleTrials,26});
+        
+%         S.hMenuMultiTraj(1)      = uimenu(S.hMenuMulti(1),       'Label','Trajectories ...'                       );
+%         S.hMenuMultiTraj(2)      = uimenu(S.hMenuMultiTraj(1),   'Label','Parameter setup ...',                             'Callback',{@fManageEvent,20});
+%         S.hMenuMultiTraj(3)      = uimenu(S.hMenuMultiTraj(1),   'Label','Generation ...',                                  'Callback',{@fMultipleTrials,31});
+%         S.hMenuMultiTraj(4)      = uimenu(S.hMenuMultiTraj(1),   'Label','Show all ...',                                    'Callback',{@fMultipleTrials,33});
+
+        S.hMenuMultiTraj(1)      = uimenu(S.hMenuMulti(1),       'Label','Trajectories ...'                       );
+        S.hMenuMultiTraj(2)      = uimenu(S.hMenuMultiTraj(1),   'Label','Labeler App ...',                                 'Callback',{@fMultipleTrials,41});
+        S.hMenuMultiTraj(3)      = uimenu(S.hMenuMultiTraj(1),   'Label','Training ...',                                    'Callback',{@fMultipleTrials,42});
+        S.hMenuMultiTraj(4)      = uimenu(S.hMenuMultiTraj(1),   'Label','Test and Show ...',                               'Callback',{@fMultipleTrials,43});
+        S.hMenuMultiTraj(5)      = uimenu(S.hMenuMultiTraj(1),   'Label','Import Trajectories ...',                         'Callback',{@fMultipleTrials,44});
+        
+        
+        S.hMenuMulti(9)          = uimenu(S.hMenuMulti(1),       'Label','Multi Trial Event Editor. ...', 'separator','on',  'Callback',{@fMultipleTrials,24},'Enable','off');
+        S.hMenuMulti(10)          = uimenu(S.hMenuMulti(1),      'Label','Multi Trial Explorer ...',                         'Callback',{@fMultipleTrials,5});
+        S.hMenuMulti(11)         = uimenu(S.hMenuMulti(1),       'Label','Multi Trial Explorer from JAABA Excel ...',        'Callback',{@fMultipleTrials,6},'Enable','off');
+        S.hMenuMulti(12)         = uimenu(S.hMenuMulti(1),       'Label','Active Roi per Event Analysis...',                 'Callback',{@fMultipleGroups,11});
+        S.hMenuMulti(13)         = uimenu(S.hMenuMulti(1),       'Label','Early/Late Roi per Event Analysis...',             'Callback',{@fMultipleGroups,12});
+        S.hMenuMulti(14)          = uimenu(S.hMenuMulti(1),      'Label','dF/F Spike Delay Map for all ROIs     ...',        'Callback',{@fMultipleGroups,13});
+        S.hMenuMulti(15)          = uimenu(S.hMenuMulti(1),      'Label','dF/F Spike Delay Histograms for all ROIs ...',     'Callback',{@fMultipleGroups,14});
+        S.hMenuMulti(16)          = uimenu(S.hMenuMulti(1),      'Label','dF/F Spike Delay Histograms for Ordered ROIs ...', 'Callback',{@fMultipleGroups,15});
+        S.hMenuMulti(17)          = uimenu(S.hMenuMulti(1),      'Label','dF/F Spike Delay Mutual Order matrix ...',         'Callback',{@fMultipleGroups,16});
+        S.hMenuMulti(18)          = uimenu(S.hMenuMulti(1),      'Label','Show Neuron Trace Order by dF/F Spike Delay ...',  'Callback',{@fMultipleGroups,18});
+        S.hMenuMulti(19)          = uimenu(S.hMenuMulti(1),      'Label','Show Neuron Trace Order by Center of Activity ...','Callback',{@fMultipleGroups,17},'separator','on','Enable','off');
+        S.hMenuMulti(20)          = uimenu(S.hMenuMulti(1),      'Label','Show Averaged Traces and Behavior Events ...',     'Callback',{@fMultipleGroups,20});
+        S.hMenuMulti(21)          = uimenu(S.hMenuMulti(1),      'Label','Pearson Correlation Mtrx of dF/F ...',             'Callback',{@fMultipleGroups,21});
+        S.hMenuMulti(22)          = uimenu(S.hMenuMulti(1),      'Label','Cluster ROI dF/F data ...',                        'Callback',{@fMultipleGroups,22},'separator','off');
+         
+        S.hMenuGroups(1)        = uimenu(S.hFig,                 'Label','Muti Experiment...');
+        S.hMenuGroups(2)        = uimenu(S.hMenuGroups(1),       'Label','Multi Group Explorer Init.....', 'enable','on' ,    'Callback',{@fMultipleGroups,1});
+        S.hMenuGroups(3)        = uimenu(S.hMenuGroups(1),       'Label','Averaged dF/F per ROI ...',                         'Callback',{@fMultipleGroups,2});
+        S.hMenuGroups(4)        = uimenu(S.hMenuGroups(1),       'Label','Averaged dF/F per ROI and Ordered ...',             'Callback',{@fMultipleGroups,5});
+        S.hMenuGroups(5)        = uimenu(S.hMenuGroups(1),       'Label','Correlation Analysis ...',                         'Callback',{@fMultipleGroups,3});
+        S.hMenuGroups(6)        = uimenu(S.hMenuGroups(1),       'Label','Behavioral Events ...',                            'Callback',{@fMultipleGroups,4},'separator','on');
        
         S.hMenuEventsEP(1)      = uimenu(S.hMenuElectroPhys(1), 'Label','Events...');
         S.hMenuEventsEP(2)      = uimenu(S.hMenuEventsEP(1),      'Label','Load from File...',                      'Callback',{@fManageEventEP,1});
@@ -2535,7 +2800,7 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         %         uimenu(S.hMenuStam(1) ,'Label','Value...', 'Callback','value');
         
         % close this menu
-        set(S.hMenuExpElectro,'Enable','off');
+        %set(S.hMenuExpElectro,'Enable','off');
         
         % sync all components
         SGui.hMain = S.hFig;
@@ -2543,15 +2808,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
 
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fSetupGUI
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * NESTED FUNCTION fUpdateGUI (nested in Main)
-% * *
 % * * Defines state of all buttons
-% * *
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
     function fUpdateGUI() %#ok<*INUSD> eventdata is trialedly unused
         
@@ -2595,13 +2854,8 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         set(S.hMenuView(2:3),'Enable','off');    % not in use
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fUpdateGUI
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * NESTED FUNCTION fSyncAll (nested in Main)
 % * *
 % * * Is called by children GUI Windows - to inform/sync other childrens
 % * *
@@ -2618,12 +2872,8 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
         end
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fSyncAll
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * NESTED FUNCTION fArrangeFigures (nested in imagine)
 % * *
 % * * Arrange figures sets up figures in the screen
 % * *
@@ -2651,13 +2901,9 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
 %         iptwindowalign(hFigLB,'right',hFigRB,'left');
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fArrangeFigures
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * NESTED FUNCTION fCloseFigures (nested in imagine)
 % * *
 % * * Closes figures with special tag names
 % * *
@@ -2687,15 +2933,11 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
             errordlg(ex.getReport('basic'),'Close Other Window Error','modal');
         end
         
-        
+        %delete(S.hFig);
         
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fCloseFigures
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 % = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * NESTED FUNCTION fCloseGUI (nested in imagine)
 % * *
 % * * Figure callback
 % * *
@@ -2705,22 +2947,19 @@ fUpdateGUI(); % Acitvate/deactivate some buttons according to the gui state
     function fCloseGUI(hObject, eventdata) %#ok<*INUSD> eventdata is trialedly unused
         % save user params
         fManageSession(0,0,3);        
-        fManageJaneliaExperiment(0,0,3);
+        fManageExperiment(0,0,9);
         
         try
             fCloseFigures(0,0);            
-            delete(gcf)
+            delete(SGui.hMain)
         catch ex
             errordlg(ex.getReport('basic'),'Close Other Window Error','modal');
         end
-        %delete(hObject); % Bye-bye figure
+        delete(hObject); % Bye-bye figure
     end
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-% * * END NESTED FUNCTION fCloseGUI
-% = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
 end
 % =========================================================================
-% *** END FUNCTION fSettings (and its nested functions)
+% *** END FUNCTION  (and its nested functions)
 % =========================================================================
 

@@ -9,6 +9,7 @@ classdef TPA_TestSyntheticDataGen
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 23.22 30.08.16 UD     Z-stack testing
     % 17.08 05.04.14 UD     Created to test ROI problems
     %-----------------------------
     
@@ -251,14 +252,14 @@ classdef TPA_TestSyntheticDataGen
         end
         % ---------------------------------------------
         % ==========================================
-        function obj = TestMultieFile(obj)
+        function obj = TestMultiFile(obj)
             
             % TestMultieFile - generates several files for test
             
-            cellType            = [1 2 3];
+            cellType            = [1 2 3 11 12];
             imgType             = 1; % camera man
             fileNum             = 5;
-            obj.FileDirPattern  = 'C:\\Uri\\DataJ\\Janelia\\Imaging\\T2\\02\\02_mT2_%03d.tif';
+            obj.FileDirPattern  = 'C:\\LabUsers\\Uri\\Data\\Janelia\\Imaging\\T2\\02\\02_T2_%03d.tif';
             
             % cells
             obj                 = GenCellData(obj, cellType);
@@ -270,6 +271,40 @@ classdef TPA_TestSyntheticDataGen
             end
             
             obj             = FileWrite(obj,fileNum);
+            obj             = ViewVideo(obj);
+            obj             = DeleteData(obj);
+            
+        end
+        % ---------------------------------------------
+        % ==========================================
+        function obj = TestMultiZStack(obj)
+            
+            % TestMultieFile - generates several files for test
+            
+            cellType            = [1 2 3 11 12];
+            imgType             = 1; % 
+            zNum                = 3;
+            obj.FileDirPattern  = 'C:\\LabUsers\\Uri\\Data\\Janelia\\Imaging\\T2\\03\\03_T2_%03d.tif';
+            
+            % cells
+            imgData             = [];
+            
+            % file gen
+            for z = 1:zNum,
+                if      z == 1, cellType            = [1 2 3 ]; 
+                elseif  z == 2, cellType            = [11 12];
+                end
+                obj                 = GenCellData(obj, cellType);
+                obj                 = GenImgData(obj, imgType);
+                [nR,nC,nT]          = size(obj.ImgData);
+                if isempty(imgData), 
+                    imgData          = repmat(obj.ImgData(:,:,1),[1 1 zNum*nT]); 
+                end
+                imgData(:,:,z + (0:nT-1)*zNum)     = obj.ImgData;
+            end
+            
+            obj.ImgData     = imgData;
+            obj             = FileWrite(obj,1);
             obj             = ViewVideo(obj);
             obj             = DeleteData(obj);
             

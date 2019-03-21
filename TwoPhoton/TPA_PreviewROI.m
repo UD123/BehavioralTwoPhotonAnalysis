@@ -39,7 +39,7 @@ numROI              = length(StrROI);
 imMaxProject        = squeeze(mean(mean(ImStack,4),3));
 
 figure(FigNum),set(gcf,'Tag','AnalysisROI'),clf;
-imagesc(imMaxProject,Par.DataRange);  colormap(gray); colorbar;
+imagesc(imMaxProject,Par.Roi.DataRange);  colormap(gray); colorbar;
 title('Total ROI Preview')
 % update structure
 for k = 1:numROI,

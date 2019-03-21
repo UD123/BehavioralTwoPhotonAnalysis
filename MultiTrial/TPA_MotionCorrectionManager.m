@@ -9,6 +9,7 @@ classdef TPA_MotionCorrectionManager
     %-----------------------------
     % Ver	Date	 Who	Descr
     %-----------------------------
+    % 24.11 15.11.16 UD     Working for Muhamad 
     % 19.07 13.10.14 UD     support multiple stack by mean projection 
     % 18.01 13.04.14 UD     GenData option 
     % 17.04 21.03.14 UD     Generating testing tif files 
@@ -99,6 +100,7 @@ classdef TPA_MotionCorrectionManager
             if nargin < 3, zSel = 1; end;
             
             [nR,nC,nZ,nT] = size(imgData);
+            %obj.ImgData   = zeros(R,nC,nT,'like',imgData);
             
             if nT > 1 && nZ > 1,
                 DTP_ManageText([], sprintf('Multiple Z stacks are detected. Working with slice %d.',zSel), 'I' ,0);
@@ -107,7 +109,8 @@ classdef TPA_MotionCorrectionManager
             elseif nT == 1, % data is 3D - do nothing
             elseif nT > 1 && nZ < 2,
                 DTP_ManageText([], sprintf('Single Z stack image data.'), 'I' ,0);
-                imgData         = squeeze(imgData(:,:,1,:));
+                %imgData         = squeeze(imgData(:,:,1,:)); % long time
+                imgData         = reshape(imgData(:,:,1,:),[nR,nC,nT]);
                 obj.ImgDataIs4D = true;
             end
             % data is 4D :  make it 3D
@@ -461,16 +464,23 @@ classdef TPA_MotionCorrectionManager
             
             switch mtrxOption,
                 case 1, % one by one
-                    offsetInd           = [refInd circshift(refInd,-1)];  % image pairs to run
-                    insertInd           = offsetInd;
+                    insertIndP           = [refInd refInd ];  % image pairs to run
+                    insertIndN           = [refInd, circshift(refInd,-1) ];  % image pairs to run
+                    offsetInd            = insertIndN;
+%                 case 2, % one by one
+%                     insertIndP           = [refInd refInd ];  % image pairs to run
+%                     insertIndN           = [refInd circshift(refInd,-10) ];  % image pairs to run
+%                     offsetInd            = insertIndN;
                 case 2, % double run equivalent in two directions - not working good
-                    offsetInd           = [refInd circshift(refInd,-1)];  % image pairs to run
-                    offsetInd           = [[circshift(refInd,-1) refInd]  ;offsetInd];  % image pairs to run
-                    insertInd           = [[circshift(refInd,-1) refInd] + nT ;offsetInd];  % image pairs to run
+                    insertIndP           = [refInd refInd ];  % image pairs to run
+                    insertIndP           = [insertIndP; [refInd+nT refInd]];  % image pairs to run
+                    insertIndN           = [refInd circshift(refInd,-1)  ];  % image pairs to run
+                    offsetInd            = [insertIndN; [refInd circshift(refInd,-ceil(nT/2)) ]];
+                    insertIndN           = [insertIndN; [refInd+ nT circshift(refInd,-ceil(nT/2)) ]];  % image pairs to run
                 case 3, % with long connections - not working good
                     offsetInd           = [refInd circshift(refInd,-1)];  % image pairs to run
                     offsetInd           = [[refInd circshift(refInd,-ceil(nT/3))];offsetInd];  % image pairs to run
-                    insertInd           = [[refInd circshift(refInd,-ceil(nT/3))]+ nT;offsetInd];  % image pairs to run
+                    insertInd           = [[refInd circshift(refInd,+ceil(nT/3))];offsetInd];  % image pairs to run
                otherwise
                     error('bad mtrxOption')
             end
@@ -478,24 +488,26 @@ classdef TPA_MotionCorrectionManager
             
             % for target test
             %offsetInd           = [refInd ones(nT,1)];  % image pairs to run
-            A                   = speye(numFFT,numFFT) + sparse(insertInd(:,1),insertInd(:,2),-1,numFFT,numFFT); %A(1,1) = 0;
+            A                   = sparse(insertIndP(:,1),insertIndP(:,2),1,numFFT+1,nT);
+            A                   = A + sparse(insertIndN(:,1),insertIndN(:,2),-1,numFFT+1,nT); %A(1,1) = 0
+            A(numFFT+1,:)       = 1; % average of all of them
                         
             % sparse does not help since inv matrix is full
             A                   = pinv(full(A));
             
             % transfomr entire data array
-            imgDataF            = fft2(obj.ImgData );
+            imgDataF            = fft2(obj.ImgData);
 
             % multiply by template
-			%imgDataF            = imgDataF(:,:,offsetInd(:,1)) .* conj(imgDataF(:,:,offsetInd(:,2)));
-			% save memory : must be offsetInd(:,2) > offsetInd(:,1)
-            imgDataFC          = imgDataF;
-			for k = 1:numFFT,
-				imgDataFC(:,:,offsetInd(k,1))  = imgDataF(:,:,offsetInd(k,1)) .* conj(imgDataF(:,:,offsetInd(k,2)));
-			end
+			imgDataF            = imgDataF(:,:,offsetInd(:,2)) .* conj(imgDataF(:,:,offsetInd(:,1)));
+% 			% save memory : must be offsetInd(:,2) > offsetInd(:,1)
+%             imgDataFC          = imgDataF;
+% 			for k = 1:numFFT,
+% 				imgDataFC(:,:,offsetInd(k,1))  = imgDataF(:,:,offsetInd(k,1)) .* conj(imgDataF(:,:,offsetInd(k,2)));
+% 			end
             
             % transform back
-            imgDataF            = ifft2(imgDataFC,'symmetric');
+            imgDataF           = ifft2(imgDataF,'symmetric');
            
             % find maxima (3d dim is time)
             [max1,loc1]        = max(imgDataF,[],1);
@@ -513,17 +525,19 @@ classdef TPA_MotionCorrectionManager
             cloc(iBool)        = cloc(iBool) - nC; %   col_shift = cloc - nC - 1;
 
             yxShift            = [rloc(:) cloc(:)];
+            yxShift(numFFT+1,:)= 0; % avergae is all zero
             
             % solve for y and x
-            yxShift                 =  A*yxShift;
-            yxShift                 = -round(yxShift(1:nT,:)); % opposite move direction
+            yxShift                 = A*yxShift;
+            yxShift                 = round(yxShift(1:nT,:)); % opposite move direction
             %end
             
             % create shifted image
+            obj.ImgDataFix          = obj.ImgData;
             for m = 1:nT,
                 obj.ImgDataFix(:,:,m)   = circshift(obj.ImgData(:,:,m),yxShift(m,:));
             end
-            obj.ImgDataFix      = cast(obj.ImgDataFix,class(obj.ImgData));
+            obj.ImgDataFix      = cast(obj.ImgDataFix,'like',obj.ImgData);
             DTP_ManageText([], sprintf('AlgUriRegisterFast finished successfully in %4.3f sec',toc), 'I' ,0)   ;
             
         end
@@ -656,10 +670,13 @@ classdef TPA_MotionCorrectionManager
                         templateType        = 5;
                         [obj,estShift]      = obj.AlgImageBoxFast(templateType);
                     case 3, % % Uri + Fast
-                        [obj,estShift]      = obj.AlgUriRegisterFast(1);
+                        [obj,estShift]      = obj.AlgUriRegisterFast(2);
                     case 4, % multiple iterations
                         [obj,estShift]      = obj.AlgMultipleImageBox(3);
-                        
+                     
+                    case 11, % good quality - first image is a template
+                        [obj,estShift]      = obj.AlgImageBoxFast(3);
+                       
                     otherwise
                         error('Bad Alg Type %d',algType)
                 end
@@ -678,7 +695,7 @@ classdef TPA_MotionCorrectionManager
         
         
         % ==========================================
-        function [obj,yxShift] = GenData(obj, imgType, shiftType)
+        function [obj,yxShift, imgData] = GenData(obj, imgType, shiftType)
             % GenData - try to gen data for testing
             % Input:
             %   imgType  - which image to use as input
@@ -722,7 +739,7 @@ classdef TPA_MotionCorrectionManager
                 case 11, % true image
                     [obj, imgData] = LoadImageData(obj);
                 case 12, % true image
-                    fileDirName = 'C:\Uri\Data\Movies\Janelia\Imaging\m76\1-10-14\1_10_14_m76__005.tif';
+                    fileDirName = 'C:\LabUsers\Uri\Data\Janelia\Imaging\m76\1-10-14\1_10_14_m76__005.tif';
                     [obj, imgData] = LoadImageData(obj,fileDirName);
                case 13, % true image
                     fileDirName = 'C:\UsersJ\Uri\Data\Videos\m2\4_4_14\Basler_front_04_04_2014_m2_014.avi';
@@ -730,12 +747,18 @@ classdef TPA_MotionCorrectionManager
                case 14, % true image
                     fileDirName = 'C:\UsersJ\Uri\Data\Videos\m2\4_4_14\Basler_side_04_04_2014_m2_016.avi';
                     [obj, imgData] = LoadImageData(obj,fileDirName);
+               case 15, % synthetic 3 stack image
+                    fileDirName = 'C:\LabUsers\Uri\Data\Janelia\Imaging\T2\03\03_T2_001.tif';
+                    [obj, imgData] = LoadImageData(obj,fileDirName);
+                    imgData        = reshape(imgData,size(imgData,1),size(imgData,2),3,[]);
                 otherwise
                     error('Bad imgType')
             end
             % put it in
-            obj = SetData(obj,imgData) ;
-            nT  = size(obj.ImgData,3);
+            %obj = SetData(obj,imgData) ;
+            nT  = size(imgData,4);
+            nZ  = size(imgData,3);
+            if nT == 1, nT = nZ; nZ = 1; end;
             
             % define shifts
             yxShift      = zeros(nT,2);
@@ -781,8 +804,20 @@ classdef TPA_MotionCorrectionManager
             
             % create shift
             for m = 1:nT,
-                imgData(:,:,m)   = circshift(obj.ImgData(:,:,m),yxShift(m,:));
+                if nZ == 1,
+                    imgData(:,:,m)   = circshift(imgData(:,:,m),yxShift(m,:));
+                else
+                    imgData(:,:,nZ,m)   = circshift(imgData(:,:,nZ,m),yxShift(m,:));
+                end
             end
+            
+            % fix
+            if nZ > 1,
+                yxShiftTmp = repmat(yxShift*0,[1 1 nZ]);
+                yxShiftTmp(:,:,nZ) = yxShift;
+                yxShift            = yxShiftTmp;
+            end
+            
             % assign
             obj                 = obj.SetData(imgData);
             
@@ -836,15 +871,17 @@ classdef TPA_MotionCorrectionManager
             errShift            = refShift + estShift; % opposite directions
             algErr              = (std(errShift));
             t                   = 1:size(refShift,1);
+            zNum                = size(estShift,3);
             
-            figure(figNum),set(figNum,'Tag','AnalysisROI');
-            ii = 1; subplot(2,1,ii),plot(t,[refShift(:,ii) estShift(:,ii) errShift(:,ii)]),legend('ref','est','err')
+            for z = 1:zNum,
+            figure(figNum + z),set(figNum + z,'Tag','AnalysisROI');
+            ii = 1; subplot(2,1,ii),plot(t,[refShift(:,ii,z) estShift(:,ii,z) errShift(:,ii,z)]),legend('ref','est','err')
             ylabel('y [pix]'),
-            title(sprintf('Shift Estimation and Error y: %5.3f [pix], x: %5.3f [pix]',algErr(1),algErr(2)))            
-            ii = 2; subplot(2,1,ii),plot(t,[refShift(:,ii) estShift(:,ii) errShift(:,ii)]),legend('ref','est','err')
+            title(sprintf('Shift Estimation and Error z: %d y: %5.3f [pix], x: %5.3f [pix]',z,algErr(1),algErr(2)))            
+            ii = 2; subplot(2,1,ii),plot(t,[refShift(:,ii,z) estShift(:,ii,z) errShift(:,ii,z)]),legend('ref','est','err')
             ylabel('x [pix]'),
             xlabel('Frame [#]'),
-            
+            end
             isOK    = true;
             
         end
@@ -959,6 +996,28 @@ classdef TPA_MotionCorrectionManager
                 figNum          = algType(k);
                 isOK = obj.CheckResult(figNum, refShift, estShift);         
             end
+            
+        end
+        % ---------------------------------------------
+        
+        % ==========================================
+        function obj = TestAlgFinal(obj, imgType ,shiftType)
+            
+            % TestAlgUri - performs testing of the mstrix inversion method on random data
+            
+            if nargin < 2, imgType    = 1; end;
+            if nargin < 3, shiftType   = 1; end;
+            
+            figNum                      = 2;
+            imgType                     = 15;
+            shiftType                   = 4;
+            
+            [obj,refShift, imgData]   = GenData(obj, imgType, shiftType);
+            [obj,estShift]            = AlgApply(obj, imgData ,4);
+            
+            
+            isOK = obj.CheckResult(figNum, refShift, estShift);         
+            
             
         end
         % ---------------------------------------------

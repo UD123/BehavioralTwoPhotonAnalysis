@@ -23,6 +23,7 @@
 %-----------------------------
 % Ver	Date	 Who	Descr
 %-----------------------------
+% 28.03 07.01.18 UD     Removing TimeInd field - make event class manager .
 % 19.09 14.10.14 UD     Adding more events
 % 19.08 11.10.14 UD     Adding enumeration to event names and sequence nummber
 % 18.12 11.07.14 UD     created
@@ -136,13 +137,14 @@ eventsPerTrialNum   = length(allTrialEvents{trialIndShow});
 if eventsPerTrialNum < 1,
     warning('Could not find Event data for trial %d',trialIndShow);
 end
-timeData         = allTrialEvents{trialIndShow}{1}.TimeInd; % actual data
+timeData         = allTrialEvents{trialIndShow}{1}.tInd; % actual data
 eventDataArray   = zeros(framNum,eventsPerTrialNum);
 eventNames       = cell(1,eventsPerTrialNum);
 
 % collect
 for m = 1:eventsPerTrialNum,
-    timeInd     = allTrialEvents{trialIndShow}{m}.TimeInd;
+%    timeInd     = allTrialEvents{trialIndShow}{m}.TimeInd;
+    timeInd     = allTrialEvents{trialIndShow}{m}.tInd;
     timeInd     = round(timeInd./frameRateRatio); % transfers to time of the two photon
     timeInd     = max(1,min(framNum,timeInd));
     % assign to vector
